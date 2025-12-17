@@ -1,6 +1,13 @@
-var client_id = Date.now()
-document.querySelector('#ws-id').textContent = client_id; 
-var ws = new WebSocket(`ws://localhost:8000/ws/${client_id}`);
+const now = new Date()
+const customTime = now.toLocaleTimeString('en-US', { 
+    hour: '2-digit', 
+    minute: '2-digit', 
+    hour12: false 
+}); 
+const token = localStorage.getItem("access_token")
+const displayName = localStorage.getItem('display_name');
+document.querySelector("#ws-id").textContent = displayName
+var ws = new WebSocket(`ws://localhost:8000/ws?token=${token}`);
 
 ws.onmessage = function(event) {
 	var messages = document.getElementById('messages');
