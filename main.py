@@ -1,4 +1,5 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Depends
+from datetime import datetime
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, Column, String, Integer
 from sqlalchemy.ext.declarative import declarative_base
@@ -99,33 +100,74 @@ def authjwt_exception_handler(request: Request, exc: AuthJWTException):
             )
 
 
+def display_name(Authorize: AuthJWT = Depends()):
+    Authorize.jwt_required()
+    claims = Authorize.get_raw_jwt()
+    display_name = claims.get("display_name")
+    return display_name
+
+
 @fastapi.post('/signup')
-def sign_up(dawg: DawgSignup, db: Session = Depends(get_db_dawgs)):
-    if db.query(Dawg.display_name).filter(Dawg.display_name == dawg.display_name).first():
+def sign_up(dawg: DawgSignup, db: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
+    if db.query(Dawg.email).filter(Dawg.email == dawg.email).first():
         raise HTTPException(status_code=409, detail="Display name already in use")
     new_dawg = Dawg(email = dawg.email, display_name = dawg.display_name, password = dawg.password) 
     db.add(new_dawg)
     db.commit()
+    dawg_id = db.query(Dawg.id).filter(Dawg.email == dawg.email).scalar()
+    display_name = db.query(Dawg.display_name).filter(Dawg.email == dawg.email).scalar()
+    access_token = Authorize.create_access_token(subject=dawg_id, user_claims={"email": dawg.email, "display_name": display_name}) 
+    return {"acces_token": access_token}
+
 
 
 
 @fastapi.post('/signin')
 def sign_in(dawg: DawgSignin, db: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
-    if not db.query(Dawg.display_name).filter(Dawg.display_name == dawg.display_name).first():
+    if not db.query(Dawg.email).filter(Dawg.email == dawg.email).first():
         raise HTTPException(status_code=404, detail="User doesn't exist")
     dawg_id = db.query(Dawg.id).filter(Dawg.email == dawg.email).scalar()
-    access_token = Authorize.create_access_token(subject=dawg.id, claims={"email": dawg.email, "id": dawg_id}) 
-    return {"acces_token": access_token}
+    display_name = db.query(Dawg.display_name).filter(Dawg.email == dawg.email).scalar()
+    access_token = Authorize.create_access_token(subject=dawg_id, user_claims={"email": dawg.email, "display_name": display_name}) 
+    return {
+            "access_token": access_token, 
+            "display_name": display_name
+    }
 
+
+
+
+#you cant add authorization or depends to a websocket like you would on a restful api, so you gotta pass the token as a parameter in the websocket request link, get this parameter in the route, manually set it as a jwt token, grab the claims of this token and use them as you like, jwt ofc checks if the password is their when it checks the token so dont worry.
+@fastapi.websocket('/ws')
+async def websocket_endpoint(websocket: WebSocket):
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=1008)
+        return
+
+    Authorize = AuthJWT()
+
+    try:
+        Authorize._token = token
+        Authorize.jwt_required()
+        claims = Authorize.get_raw_jwt()
+    except AuthJWTException:
+        await websocket.close(code=1008)
+        return
+
+    display_name = claims.get("display_name")
     
-@fastapi.websocket('/ws/{client_id}')
-async def websocket_endpoint(websocket: WebSocket, client_id: int):
+
     await manager.connect(websocket)
     try:
         while True:
             data = await websocket.receive_text()
-            await manager.broadcasts(f'Client #{client_id}: {data}')
+            now = datetime.now()    
+            time = now.strftime("%H:%M")
+            await manager.broadcasts(f'{display_name}: {data} {time}')
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-        await manager.broadcasts(f'Client #{client_id} lef the chat')
+        await manager.broadcasts(f'{display_name} lef the chat')
         
+
+    
