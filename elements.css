@@ -1,6 +1,13 @@
+button{
+	border:none;
+}
+
+input{
+	border:none;
+}
 @font-face{
 	font-family:'discord';
-	src: url('fonts/Uni Sans Thin.otf');
+	src: url('fonts/gg sans Medium.ttf');
 }
 
 ul{
@@ -9,13 +16,48 @@ ul{
 .text{
 	font-family:"discord";
 	color:white;
+	font-size:20px;
 }
 
 body{
-	background-color:#202225;
+	background-color:#23272a;
 }
 
 #message{
 	padding:5px;
-	margin:5px;
+	margin:10px;
+}
+
+#button{
+	font-weight:bold;
+	padding:15px;
+	border:1px solid transparent;
+	border-radius:10px;
+	background-color:#5865F2;
+	color:white;
+}
+
+#messageText{
+	background-color:#42464e;
+}
+
+#message-form input{
+	color:white;
+	margin-right:10px;
+	padding:15px;
+	border:1px solid transparent;
+	border-radius:10px;
+	width:90%;
+}
+
+.container{
+	margin:5% 20%;
+}
+
+h1{
+	margin:40px;
+}
+
+#messages-div{
+
 }
