@@ -184,8 +184,8 @@ async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db_
             data = await websocket.receive_text()
             now = datetime.now()    
             time = now.strftime("%H:%M")
-            await manager.broadcasts(f'{display_name}: {data} {time}')
-            message = f'{display_name}: {data} {time}'
+            await manager.broadcasts(f'[{display_name}]   {data} {time}')
+            message = f'[{display_name}]   {data} {time}'
             new_message = Message(message_content = message)
             db.add(new_message)
             db.commit()
