@@ -1,9 +1,9 @@
 signupForm = document.getElementById('signup-form')
 signupForm.addEventListener('submit', function signup(e) {
 	e.preventDefault()
-	var displayName = document.getElementById('display-name'); 
-	var email = document.getElementById('email');
-	var password = document.getElementById('password');
+	var displayName = document.getElementById('display-name').value; 
+	var email = document.getElementById('email').value;
+	var password = document.getElementById('password').value;
 	fetch('http://127.0.0.1:8000/signup', {
 		method:'POST',
 		headers: {
