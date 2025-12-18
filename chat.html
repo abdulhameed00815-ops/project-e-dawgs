@@ -6,13 +6,17 @@
 	</head>
 	<body>
 		<h1 class="text">Chat with dawg</h1>
-		<h2 class="text">Your Id: <span class="text" id="ws-id"></span></h2>
-		<form action="" onsubmit="sendMessage(event)">
-			<input type="text" id="messageText" autocomplete="off/">
-			<button>Send</button>
-		</form>
-		<ul id="messages" class="text">
-		</ul>
+		<div class="container">
+			<div id="messages-div">
+			<ul id="messages" class="text">
+			</ul>
+			</div>
+			<h2 class="text">Your Id: <span class="text" id="ws-id"></span></h2>
+			<form action="" onsubmit="sendMessage(event)" id="message-form">
+				<input type="text" id="messageText" autocomplete="off/">
+				<button id="button">&crarr;</button>
+			</form>
+		</div>
 	</body>
 	<script src="chat.js"></script>
 </html>
