@@ -2,15 +2,16 @@
 <html>
 	<head>
 		<title>Chat</title>
+	        <link rel="stylesheet" type="text/css" href="elements.css?v=123">
 	</head>
 	<body>
-		<h1>Chat with dawg</h1>
-		<h2>Your Id: <span id="ws-id"></span></h2>
+		<h1 class="text">Chat with dawg</h1>
+		<h2 class="text">Your Id: <span class="text" id="ws-id"></span></h2>
 		<form action="" onsubmit="sendMessage(event)">
 			<input type="text" id="messageText" autocomplete="off/">
 			<button>Send</button>
 		</form>
-		<ul id="messages">
+		<ul id="messages" class="text">
 		</ul>
 	</body>
 	<script src="chat.js"></script>
