@@ -1,0 +1,21 @@
+@font-face{
+	font-family:'discord';
+	src: url('fonts/Uni Sans Thin.otf');
+}
+
+ul{
+	list-style-type:none;
+}
+.text{
+	font-family:"discord";
+	color:white;
+}
+
+body{
+	background-color:#202225;
+}
+
+#message{
+	padding:5px;
+	margin:5px;
+}
