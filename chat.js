@@ -29,12 +29,14 @@ const displayName = localStorage.getItem('display_name');
 document.querySelector("#ws-id").textContent = displayName
 var ws = new WebSocket(`ws://localhost:8000/ws?token=${token}`);
 
+
 ws.onmessage = function(event) {
 	chatMessages.insertAdjacentHTML('beforeend', `
 		<div id="message">
 			<li class="text">${event.data}</li>
 		</div>
 	`)
+	chatMessages.scrollTop = chatMessages.scrollHeight;
 };
 
 function sendMessage(event) {
