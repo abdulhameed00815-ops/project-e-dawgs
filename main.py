@@ -34,6 +34,11 @@ SessionLocalDawgs = sessionmaker(autocommit=False, autoflush=False, bind=engine_
 session_dawgs = SessionLocalDawgs()
 
 
+engine_messages = create_engine("postgresql://postgres:1234@localhost/messages")
+SessionLocalMessages = sessionmaker(autocommit=False, autoflush=False, bind=engine_messages)
+session_messages = SessionLocalMessages()
+
+
 class Dawg(Base):
     __tablename__ = "dawgs"
     id = Column(Integer, primary_key=True)
@@ -42,7 +47,14 @@ class Dawg(Base):
     password = Column(String)
 
 
+class Message(Base):
+    __tablename__ = "messages"
+    id = Column(Integer, primary_key=True)
+    message_content = Column(String)
+
+
 Base.metadata.create_all(bind=engine_dawgs)
+Base.metadata.create_all(bind=engine_messages)
 
 
 class DawgSignup(BaseModel):
@@ -53,6 +65,14 @@ class DawgSignup(BaseModel):
 
 def get_db_dawgs():
     db = SessionLocalDawgs()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def get_db_messages():
+    db = SessionLocalMessages()
     try:
         yield db
     finally:
@@ -139,7 +159,7 @@ def sign_in(dawg: DawgSignin, db: Session = Depends(get_db_dawgs), Authorize: Au
 
 #you cant add authorization or depends to a websocket like you would on a restful api, so you gotta pass the token as a parameter in the websocket request link, get this parameter in the route, manually set it as a jwt token, grab the claims of this token and use them as you like, jwt ofc checks if the password is their when it checks the token so dont worry.
 @fastapi.websocket('/ws')
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db_messages)):
     token = websocket.query_params.get("token")
     if not token:
         await websocket.close(code=1008)
@@ -165,9 +185,18 @@ async def websocket_endpoint(websocket: WebSocket):
             now = datetime.now()    
             time = now.strftime("%H:%M")
             await manager.broadcasts(f'{display_name}: {data} {time}')
+            message = f'{display_name}: {data} {time}'
+            new_message = Message(message_content = message)
+            db.add(new_message)
+            db.commit()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
         await manager.broadcasts(f'{display_name} lef the chat')
         
 
-    
+@fastapi.get('/getmessages')
+def get_messages(db: Session = Depends(get_db_messages), Authorize: AuthJWT = Depends()):
+    Authorize.jwt_required()
+    messages = db.query(Message).all()
+    return list(messages)
+
