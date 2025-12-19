@@ -86,23 +86,8 @@ class DawgSignin(BaseModel):
     password:str
 
 
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: list[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
-
-    async def broadcasts(self, message: str):
-        for connection in self.active_connections:
-            await connection.send_text(message)
 
 
-manager = ConnectionManager()
 
 
 class Settings(BaseModel):
@@ -167,11 +152,41 @@ def sign_in(dawg: DawgSignin, db: Session = Depends(get_db_dawgs), Authorize: Au
     }
 
 
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: list[str, WebSocket] = []
+
+    async def connect(self, websocket: WebSocket, client_id: str = Depends(display_name)):
+        await websocket.accept()
+        self.active_connections[client_id] = websocket
+
+    def disconnect(self, websocket: WebSocket, client_id: str = Depends(display_name)):
+        if client_id in self.active_connections:
+            del self.active_connections[client_id]
+            
+    def send_personal_message(message: str, client_id: str = Depends(display_name)):
+        if client_id in self.active_connections:
+            websocket = self.active_connections[client_id]
+        else:
+            print(f"client {client_id} wasn't found")
+
+    async def broadcasts(self, message: str):
+        for connection in self.active_connections:
+            await connection.send_text(message)
+
+
+manager = ConnectionManager()
+
+@fastapi.post('/dm/{client_id}')
+async def dm(message: str, client_id: str = Depends(display_name)):
+    await manager.send_personal_message(message, client_id)
+    return {"message": "Message sent if client connected"}
+
 
 
 #you cant add authorization or depends to a websocket like you would on a restful api, so you gotta pass the token as a parameter in the websocket request link, get this parameter in the route, manually set it as a jwt token, grab the claims of this token and use them as you like, jwt ofc checks if the password is their when it checks the token so dont worry.
-@fastapi.websocket('/ws')
-async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db_messages)):
+@fastapi.websocket('/ws/{client_id}')
+async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db_messages), client_id: str = Depends(display_name)):
     token = websocket.query_params.get("token")
     if not token:
         await websocket.close(code=1008)
@@ -187,8 +202,6 @@ async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db_
         await websocket.close(code=1008)
         return
 
-    display_name = claims.get("display_name")
-    
 
     await manager.connect(websocket)
     try:
@@ -196,14 +209,14 @@ async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db_
             data = await websocket.receive_text()
             now = datetime.now()    
             time = now.strftime("%H:%M")
-            await manager.broadcasts(f'[{display_name}]   {data} {time}')
-            message = f'[{display_name}]   {data} {time}'
+            await manager.broadcasts(f'[{client_id}]   {data} {time}')
+            message = f'[{client_id}]   {data} {time}'
             new_message = Message(message_content = message)
             db.add(new_message)
             db.commit()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-        await manager.broadcasts(f'{display_name} lef the chat')
+        await manager.broadcasts(f'{client_id} lef the chat')
         
 
 @fastapi.get('/getmessages')
