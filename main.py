@@ -12,6 +12,8 @@ from fastapi_jwt_auth2.exceptions import AuthJWTException
 from decouple import config
 import re
 
+email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+
 
 jwt_secret = config("jwt_secret")
 jwt_algo = config("jwt_algorithm")
@@ -130,7 +132,17 @@ def display_name(Authorize: AuthJWT = Depends()):
 @fastapi.post('/signup')
 def sign_up(dawg: DawgSignup, db: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
     if db.query(Dawg.email).filter(Dawg.email == dawg.email).first():
-        raise HTTPException(status_code=409, detail="Display name already in use")
+        raise HTTPException(status_code=409, detail="user email already in use")
+    if not re.fullmatch(email_regex, dawg.email):
+        raise HTTPException(status_code=400, detail="invalid email")
+    if len(dawg.display_name) == 0:
+        raise HTTPException(status_code=400, detail="please enter a display name")
+    if len(dawg.password) < 4:
+        raise HTTPException(status_code=400, detail="password too short")
+    if len(dawg.password) > 50:
+        raise HTTPException(status_code=400, detail="password too long")
+    if len(dawg.display_name) > 20:
+        raise HTTPException(status_code=400, detail="display name too long man")
     new_dawg = Dawg(email = dawg.email, display_name = dawg.display_name, password = dawg.password) 
     db.add(new_dawg)
     db.commit()
