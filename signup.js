@@ -24,6 +24,9 @@ signupForm.addEventListener('submit', function signup(e) {
 			output.innerHTML = `
 				<h2>${data.detail}</h2>
 			`
+			setTimeout(() => {
+				window.location.reload();
+			}, 3000);
 		}
 	});
 })
