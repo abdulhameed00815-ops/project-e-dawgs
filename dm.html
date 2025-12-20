@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+        <head>
+                <title>Chat</title>
+                <link rel="stylesheet" type="text/css" href="elements.css?v=123">
+        </head>
+        <body>
+                <h1 class="text">Chat with dawg</h1>
+                <div class="container">
+                        <div id="messages-div">
+                        <ul id="messages" class="text">
+                        </ul>
+                        </div>
+                        <h2 class="text">Your Id: <span class="text" id="ws-id"></span></h2>
+                        <form action="" onsubmit="sendMessage(event)" id="message-form" autocomplete="off">
+                                <div id="input">
+                                <input type="text" id="messageText" autocomplete="off/" placeholder="Message Dawgs">
+                                <button id="button">&crarr;</button>
+                                </div>
+                        </form>
+                </div>
+        </body>
+        <script src="dm.js"></script>
+</html>
+
