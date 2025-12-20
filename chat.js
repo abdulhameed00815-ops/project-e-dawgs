@@ -45,3 +45,11 @@ function sendMessage(event) {
 	input.value = '';
 	event.preventDefault();
 }
+
+const targetForm = document.getElementById("target-form")
+targetForm.addEventListener("submit", function dm(e) {
+	e.preventDefault()
+	const target = document.getElementById("target").value();
+	localStorage.setItem("target", target)
+	window.location.assign("http://localhost:5500/dm.html");
+})
