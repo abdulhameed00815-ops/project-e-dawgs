@@ -16,8 +16,8 @@ signupForm.addEventListener('submit', function signin(e) {
         })
         .then(({ status, data }) => {
                 if (status === 200) {
-                        localStorage.setItem('access_token', data.access_token);
-			localStorage.setItem('display_name', data.display_name);
+                        sessionStorage.setItem('access_token', data.access_token);
+			sessionStorage.setItem('display_name', data.display_name);
                         window.location.assign("http://localhost:5500/chat.html");
                 } else {
 			var output = document.getElementById('output');

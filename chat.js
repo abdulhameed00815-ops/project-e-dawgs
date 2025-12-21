@@ -1,4 +1,4 @@
-const token = localStorage.getItem("access_token")
+const token = sessionStorage.getItem("access_token")
 var chatMessages = document.getElementById("messages");
 window.onload = function getMessages() {
 	fetch("http://127.0.0.1:8000/getmessages", {
@@ -25,7 +25,7 @@ window.onload = function getMessages() {
 		}	
 	})
 }
-const displayName = localStorage.getItem('display_name');
+const displayName = sessionStorage.getItem('display_name');
 document.querySelector("#ws-id").textContent = displayName
 var ws = new WebSocket(`ws://localhost:8000/ws?token=${token}`);
 
@@ -49,7 +49,7 @@ function sendMessage(event) {
 const targetForm = document.getElementById("target-form")
 targetForm.addEventListener("submit", function dm(e) {
 	e.preventDefault()
-	const target = document.getElementById("target").value();
-	localStorage.setItem("target", target)
+	const target = document.getElementById("target").value;
+	sessionStorage.setItem("target", target)
 	window.location.assign("http://localhost:5500/dm.html");
 })

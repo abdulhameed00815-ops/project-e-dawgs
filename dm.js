@@ -1,7 +1,8 @@
-const token = localStorage.getItem("access_token")
+const token = sessionStorage.getItem("access_token");
+const displayName = sessionStorage.getItem("display_name");
 var chatMessages = document.getElementById("messages");
 
-const target = localStorage.getItem("target");
+const target = sessionStorage.getItem("target");
 var dm = new WebSocket(`ws://localhost:8000/wsdm/${displayName}?token=${token}&target=${target}`);
 
 dm.onmessage = function(event) {
