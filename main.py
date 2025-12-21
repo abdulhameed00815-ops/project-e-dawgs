@@ -1,3 +1,4 @@
+from urllib.parse import unquote
 from datetime import datetime
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,6 +42,12 @@ SessionLocalMessages = sessionmaker(autocommit=False, autoflush=False, bind=engi
 session_messages = SessionLocalMessages()
 
 
+
+engine_dms = create_engine("postgresql://postgres:1234@localhost/dms")
+SessionLocalDms = sessionmaker(autocommit=False, autoflush=False, bind=engine_dms)
+session_dms = SessionLocalDms()
+
+
 class Dawg(Base):
     __tablename__ = "dawgs"
     id = Column(Integer, primary_key=True)
@@ -53,6 +60,11 @@ class Message(Base):
     __tablename__ = "messages"
     id = Column(Integer, primary_key=True)
     message_content = Column(String)
+
+class Dm(Base):
+    __tablename__ = "dms"
+    message_id = Column(Integer, primary_key=True)
+    dm_id = Column(Integer)
 
 
 Base.metadata.create_all(bind=engine_dawgs)
@@ -81,13 +93,17 @@ def get_db_messages():
         db.close()
 
 
+def get_db_dms():
+    db = SessionLocalDms()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
 class DawgSignin(BaseModel):
     email:str
     password:str
-
-
-
-
 
 
 class Settings(BaseModel):
@@ -137,8 +153,6 @@ def sign_up(dawg: DawgSignup, db: Session = Depends(get_db_dawgs), Authorize: Au
     return {"acces_token": access_token}
 
 
-
-
 @fastapi.post('/signin')
 def sign_in(dawg: DawgSignin, db: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
     if not db.query(Dawg.email).filter(Dawg.email == dawg.email).first():
@@ -157,13 +171,13 @@ class ConnectionManager:
         self.active_connections: dict[str, WebSocket] = {}
 
 
-    async def connect(self, websocket: WebSocket, id: str = Depends(display_name)):
+    async def connect(self, websocket: WebSocket, display_name: str = Depends(display_name)):
         await websocket.accept()
-        self.active_connections[id] = websocket
+        self.active_connections[display_name] = websocket
 
 
-    def disconnect(self, websocket: WebSocket, id: str = Depends(display_name)):
-        self.active_connections.pop(id, None)
+    def disconnect(self, websocket: WebSocket, display_name: str = Depends(display_name)):
+        self.active_connections.pop(display_name, None)
 
             
     async def broadcasts(self, message: str):
@@ -171,8 +185,11 @@ class ConnectionManager:
             await websocket.send_text(message)
 
 
-    async def dm(self, message: str, id: str = Depends(display_name)):
-        websocket = self.active_connections.get(id)
+    async def dm(self, message: str, sender: str = Depends(display_name), reciever: str, db: Session = Depends(get_db_dms), dm_id: int):
+        new_dm = Dm(dm_id = dm_id)
+        db.add(new_dm)
+        db.commit()
+        websocket = self.active_connections.get(display_name)
         if websocket:
             await websocket.send_text(message)
 
@@ -201,7 +218,7 @@ async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db_
     display_name = claims.get("display_name")
 
 
-    await manager.connect(websocket)
+    await manager.connect(websocket, display_name)
     try:
         while True:
             data = await websocket.receive_text()
@@ -217,7 +234,7 @@ async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db_
         await manager.broadcasts(f'{display_name} lef the chat')
         
         
-@fastapi.websocket("/wsdm/{id}")
+@fastapi.websocket("/wsdm/{display_name}")
 async def dm_route(websocket: WebSocket):
     token = websocket.query_params.get("token")
     if not token:
@@ -234,18 +251,23 @@ async def dm_route(websocket: WebSocket):
         await websocket.close(code=1008)
         return
 
-    await websocket.accept()
 
     display_name = claims.get("display_name")
 
-    await manager.connect(display_name, websocket)
+    await manager.connect(websocket, display_name)
 
     target = websocket.query_params.get("target")
 
+    target = unquote(target)
+
+    print(target)
+
     try:
         while True:
+            now = datetime.now()    
+            time = now.strftime("%H:%M")
             data = await websocket.receive_text()
-            await manager.dm(target, data)
+            await manager.dm(target, f"[{display_name}] {data} {time}")
 
     except WebSocketDisconnect:
         manager.disconnect(display_name)
