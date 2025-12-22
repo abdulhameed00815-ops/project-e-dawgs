@@ -64,11 +64,13 @@ class Message(Base):
 class Dm(Base):
     __tablename__ = "dms"
     message_id = Column(Integer, primary_key=True)
-    dm_id = Column(Integer)
+    dm_id = Column(Integer, unique=True)
+    dm_content = Column(String)
 
 
 Base.metadata.create_all(bind=engine_dawgs)
 Base.metadata.create_all(bind=engine_messages)
+Base.metadata.create_all(bind=engine_dms)
 
 
 class DawgSignup(BaseModel):
@@ -185,13 +187,13 @@ class ConnectionManager:
             await websocket.send_text(message)
 
 
-    async def dm(self, message: str, sender: str = Depends(display_name), reciever: str, db: Session = Depends(get_db_dms), dm_id: int):
-        new_dm = Dm(dm_id = dm_id)
-        db.add(new_dm)
-        db.commit()
-        websocket = self.active_connections.get(display_name)
-        if websocket:
-            await websocket.send_text(message)
+    async def dm(self, message: str, target: str):
+        try:
+            for websocket in self.active_connections.values():
+                if websocket[target]:
+                    await websocket.send_text(message)
+        except WebSocketDisconnect:
+            pass
 
 
 manager = ConnectionManager()
@@ -234,8 +236,8 @@ async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db_
         await manager.broadcasts(f'{display_name} lef the chat')
         
         
-@fastapi.websocket("/wsdm/{display_name}")
-async def dm_route(websocket: WebSocket):
+@fastapi.websocket("/wsdm")
+async def dm_route(websocket: WebSocket, db_dawgs: Session = Depends(get_db_dawgs), db_dms: Session = Depends(get_db_dms)):
     token = websocket.query_params.get("token")
     if not token:
         await websocket.close(code=1008)
@@ -254,24 +256,45 @@ async def dm_route(websocket: WebSocket):
 
     display_name = claims.get("display_name")
 
+    your_dawg_id = db_dawgs.query(Dawg.id).filter(Dawg.display_name == display_name).scalar()
+
+    target_display_name = websocket.query_params.get("target")
+
+    target_display_name = unquote(target_display_name)
+
+    target_dawg_id = db_dawgs.query(Dawg.id).filter(Dawg.display_name == target_display_name).scalar()
+
+    def dm_id(you: int, target: int) -> int:
+        x = min(you, target)
+        y = max(you, target)
+        return (x + y) * (x + y + 1) // 2 + y
+
+
+    dm_id_value = dm_id(you=your_dawg_id, target=target_dawg_id)
+
+    print(display_name)
+    print(dm_id_value)
+    print(target_display_name)
+    print(your_dawg_id)
+    print(target_dawg_id)
+
     await manager.connect(websocket, display_name)
-
-    target = websocket.query_params.get("target")
-
-    target = unquote(target)
-
-    print(target)
 
     try:
         while True:
+            data = await websocket.receive_text()
             now = datetime.now()    
             time = now.strftime("%H:%M")
-            data = await websocket.receive_text()
-            await manager.dm(target, f"[{display_name}] {data} {time}")
+            message = f"[{display_name}] {data} {time}"
+            await manager.dm(target=target_display_name, message=message)
+            print(message)
+            new_dm = Dm(dm_id = dm_id_value, dm_content = message)
+            db_dms.add(new_dm)
+            db_dms.commit()
 
     except WebSocketDisconnect:
         manager.disconnect(display_name)
-        await manager.dm(target, f"{display_name} left the chat")
+        await manager.dm(target=target_display_name, message=f"{display_name} left the chat")
 
 
 @fastapi.get('/getmessages')
