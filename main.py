@@ -64,7 +64,7 @@ class Message(Base):
 class Dm(Base):
     __tablename__ = "dms"
     message_id = Column(Integer, primary_key=True)
-    dm_id = Column(Integer, unique=True)
+    dm_id = Column(Integer)
     dm_content = Column(String)
 
 
@@ -188,13 +188,14 @@ class ConnectionManager:
 
 
     async def dm(self, message: str, target: str):
+        websocket = self.active_connections.get(target)
+        if not websocket:
+            return
         try:
-            for websocket in self.active_connections.values():
-                if websocket[target]:
-                    await websocket.send_text(message)
-        except WebSocketDisconnect:
-            pass
-
+            await websocket.send_text(message)
+        except (RuntimeError, WebSocketDisconnect): 
+            self.active_connections.pop(target, None)
+#so, the dm function at top basically checks if the target has an active connection, if it does then you get to send a message directly without issues, but if he doesnt, then it basically cleans the function of his remainders (pop), by cleaning you allow the app to not crash basically (I AM NOT A VIBE CODER).
 
 manager = ConnectionManager()
 
@@ -287,6 +288,7 @@ async def dm_route(websocket: WebSocket, db_dawgs: Session = Depends(get_db_dawg
             time = now.strftime("%H:%M")
             message = f"[{display_name}] {data} {time}"
             await manager.dm(target=target_display_name, message=message)
+            await manager.dm(target=display_name, message=message)
             print(message)
             new_dm = Dm(dm_id = dm_id_value, dm_content = message)
             db_dms.add(new_dm)
@@ -303,3 +305,9 @@ def get_messages(db: Session = Depends(get_db_messages), Authorize: AuthJWT = De
     messages = db.query(Message).all()
     return list(messages)
 
+
+@fastapi.get('/getdms/{dm_id}')
+def get_dms(db: Session = Depends(get_db_dms), Authorize: AuthJWT = Depends()):
+    Authorize.jwt_required()
+    messages = db.query(Dm.dm_content).filter(Dm.dm_id == dm_id)
+    return list(messages)
