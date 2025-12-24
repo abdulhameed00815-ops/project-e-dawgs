@@ -306,8 +306,29 @@ def get_messages(db: Session = Depends(get_db_messages), Authorize: AuthJWT = De
     return list(messages)
 
 
+@fastapi.get('/getdmid/{display_name}/{target_display_name}')
+def get_dm_id(display_name: str, target_display_name: str, request: Request, db_dms: Session = Depends(get_db_dms), db_dawgs: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
+    def dm_id(you: int, target: int) -> int:
+        x = min(you, target)
+        y = max(you, target)
+        return (x + y) * (x + y + 1) // 2 + y
+
+
+    your_id = db_dawgs.query(Dawg.id).filter(Dawg.display_name == display_name).scalar()
+    print(your_id)
+
+    target_id = db_dawgs.query(Dawg.id).filter(Dawg.display_name == target_display_name).scalar()
+    print(target_id)
+    
+
+    dm_id_value = dm_id(you=your_id, target=target_id)
+
+    return {"dm_id": dm_id_value}
+
+
 @fastapi.get('/getdms/{dm_id}')
-def get_dms(db: Session = Depends(get_db_dms), Authorize: AuthJWT = Depends()):
+def get_dms(dm_id: int, db: Session = Depends(get_db_dms), Authorize: AuthJWT = Depends()):
     Authorize.jwt_required()
-    messages = db.query(Dm.dm_content).filter(Dm.dm_id == dm_id)
+    params = request.query_params
+    messages = db.query(Dm.dm_content).filter(Dm.dm_id == dm_id).all()
     return list(messages)
