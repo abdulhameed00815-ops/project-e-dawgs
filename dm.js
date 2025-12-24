@@ -2,12 +2,64 @@ const token = sessionStorage.getItem("access_token");
 var chatMessages = document.getElementById("messages");
 const messageForm = document.getElementById("message-form");
 
-const displayName = sessionStorage.getItem('display_name');
-document.querySelector("#ws-id").textContent = displayName
+const display_name = sessionStorage.getItem('display_name');
+document.querySelector("#ws-id").textContent = display_name
 
 
-const target = sessionStorage.getItem("target");
-var dm = new WebSocket(`ws://localhost:8000/wsdm?token=${token}&target=${target}`);
+const target_display_name = sessionStorage.getItem("target");
+var dm = new WebSocket(`ws://localhost:8000/wsdm?token=${token}&target=${target_display_name}`);
+
+window.onload = function getDmId() {
+	fetch(`http://127.0.0.1:8000/getdmid/${display_name}/${target_display_name}`, {
+		method: "GET",
+	        headers: {
+			"Authorization": `Bearer ${token}`,
+			"Accept": 'application/json, text/plain, */*',
+			"Content-type": 'application/json'
+                }
+	})
+	.then(res => {
+		return res.json().then(data => ({ status: res.status, data: data }));
+	})
+	.then(({ status, data }) => {
+		if (status === 200) {
+			sessionStorage.setItem("dm_id", data.dm_id);
+		}
+
+	});
+}
+
+
+const dm_id = sessionStorage.getItem("dm_id");
+console.log(dm_id);
+
+
+window.onload = function getDms() {
+        fetch(`http://127.0.0.1:8000/getdms/${dm_id}`, {
+                method:'GET',
+                headers: {
+                        "Authorization": `Bearer ${token}`,
+                        "Accept": 'application/json, text/plain, */*',
+                        "Content-type": 'application/json'
+
+                }
+        })
+        .then(res => {
+                return res.json().then(data => ({ status: res.status, data: data }));
+        })
+        .then(({ status, data }) => {
+                if (status === 200) {
+                        data.forEach(function(message) {
+                                chatMessages.insertAdjacentHTML('beforeend', `
+                                        <div id="message">
+                                                <li class="text">${message.message_content}</li>
+                                        </div>
+                                `)
+                        })
+                }
+        })
+}
+
 
 
 messageForm.addEventListener("submit", function sendDm(event) {
