@@ -7,9 +7,8 @@ document.querySelector("#ws-id").textContent = display_name
 
 
 const target_display_name = sessionStorage.getItem("target");
-var dm = new WebSocket(`ws://localhost:8000/wsdm?token=${token}&target=${target_display_name}`);
 
-window.onload = function getDmId() {
+function getDmId() {
 	fetch(`http://127.0.0.1:8000/getdmid/${display_name}/${target_display_name}`, {
 		method: "GET",
 	        headers: {
@@ -23,18 +22,19 @@ window.onload = function getDmId() {
 	})
 	.then(({ status, data }) => {
 		if (status === 200) {
-			sessionStorage.setItem("dm_id", data.dm_id);
+			sessionStorage.setItem('dm_id', data.dm_id);
 		}
 
 	});
 }
 
 
-const dm_id = sessionStorage.getItem("dm_id");
-console.log(dm_id);
+getDmId()
+const dm_id = sessionStorage.getItem('dm_id')
+console.log(dm_id)
 
 
-window.onload = function getDms() {
+function getDms() {
         fetch(`http://127.0.0.1:8000/getdms/${dm_id}`, {
                 method:'GET',
                 headers: {
@@ -52,15 +52,25 @@ window.onload = function getDms() {
                         data.forEach(function(message) {
                                 chatMessages.insertAdjacentHTML('beforeend', `
                                         <div id="message">
-                                                <li class="text">${message.message_content}</li>
+                                                <li class="text">${message.dm_content}</li>
                                         </div>
                                 `)
                         })
-                }
+                } else {
+			chatMessages.insertAdjacentHTML('beforeend', `
+				<div id="message">
+					<li class="text">${data.detail}</li>
+				</div>
+			`);
+		}
         })
 }
 
 
+getDms()
+
+
+var dm = new WebSocket(`ws://localhost:8000/wsdm?token=${token}&target=${target_display_name}`);
 
 messageForm.addEventListener("submit", function sendDm(event) {
 	event.preventDefault();
