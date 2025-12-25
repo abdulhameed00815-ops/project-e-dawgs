@@ -144,3 +144,28 @@ h1{
 	font-family:"discord";
 	color:#bbbbbb;
 }
+
+.top{
+ 	display:grid;
+        justify-items:center;
+        grid-template-columns: 1fr auto 1fr;
+}
+
+#target{
+	margin:40px;
+	color:white;
+	padding:15px;
+	margin:20px;
+	border:1px solid transparent;
+	border-radius:10px;
+	background-color:#42464e;
+}
+
+#target::placeholder{
+	font-family:"discord";
+	color:#bbbbbb;
+}
+
+#chat-h1{
+	justify-self:start;
+}
