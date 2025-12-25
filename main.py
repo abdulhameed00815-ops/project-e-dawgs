@@ -273,12 +273,6 @@ async def dm_route(websocket: WebSocket, db_dawgs: Session = Depends(get_db_dawg
 
     dm_id_value = dm_id(you=your_dawg_id, target=target_dawg_id)
 
-    print(display_name)
-    print(dm_id_value)
-    print(target_display_name)
-    print(your_dawg_id)
-    print(target_dawg_id)
-
     await manager.connect(websocket, display_name)
 
     try:
@@ -307,7 +301,12 @@ def get_messages(db: Session = Depends(get_db_messages), Authorize: AuthJWT = De
 
 
 @fastapi.get('/getdmid/{display_name}/{target_display_name}')
-def get_dm_id(display_name: str, target_display_name: str, request: Request, db_dms: Session = Depends(get_db_dms), db_dawgs: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
+def get_dm_id(display_name: str, target_display_name: str, db_dawgs: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
+    Authorize.jwt_required()
+    print(display_name)
+    print(target_display_name)
+
+
     def dm_id(you: int, target: int) -> int:
         x = min(you, target)
         y = max(you, target)
@@ -315,20 +314,20 @@ def get_dm_id(display_name: str, target_display_name: str, request: Request, db_
 
 
     your_id = db_dawgs.query(Dawg.id).filter(Dawg.display_name == display_name).scalar()
-    print(your_id)
 
     target_id = db_dawgs.query(Dawg.id).filter(Dawg.display_name == target_display_name).scalar()
+    print(your_id)
     print(target_id)
-    
 
-    dm_id_value = dm_id(you=your_id, target=target_id)
+    if your_id is None or target_id is None:
+        raise HTTPException(status_code=404, detail="user not found")
 
-    return {"dm_id": dm_id_value}
+
+    return {"dm_id": dm_id(you=your_id, target=target_id)}
 
 
 @fastapi.get('/getdms/{dm_id}')
 def get_dms(dm_id: int, db: Session = Depends(get_db_dms), Authorize: AuthJWT = Depends()):
     Authorize.jwt_required()
-    params = request.query_params
-    messages = db.query(Dm.dm_content).filter(Dm.dm_id == dm_id).all()
+    messages = db.query(Dm).filter(Dm.dm_id == dm_id).all()
     return list(messages)
