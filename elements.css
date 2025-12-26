@@ -42,7 +42,19 @@ body{
 	border-radius:10px;
 	background-color:#5865F2;
 	color:white;
+	font-family:"discord";
 }
+
+#button1{
+	font-weight:bold;
+	padding:15px;
+	border:1px solid transparent;
+	border-radius:10px;
+	background-color:#5865F2;
+	color:white;
+	margin:40px;
+	font-family:"discord";
+} 
 
 #messageText{
 	background-color:#42464e;
@@ -167,5 +179,9 @@ h1{
 }
 
 #chat-h1{
+	justify-self:start;
+}
+
+#main-header{
 	justify-self:start;
 }
