@@ -1,12 +1,20 @@
 const token = sessionStorage.getItem("access_token");
 var chatMessages = document.getElementById("messages");
 const messageForm = document.getElementById("message-form");
+const mainHeader = document.getElementById("main-header");
+const loungeButton = document.getElementById("button1");
 
 const display_name = sessionStorage.getItem('display_name');
 document.querySelector("#ws-id").textContent = display_name
 
 
 const target_display_name = sessionStorage.getItem("target");
+
+mainHeader.textContent = `You are in a DM with: ${target_display_name}`;
+
+loungeButton.addEventListener("click", function returnToLounge() { 
+	window.location.assign("http://localhost:5500/chat.html")
+});
 
 function getDmId() {
 	fetch(`http://127.0.0.1:8000/getdmid/${display_name}/${target_display_name}`, {
@@ -49,7 +57,7 @@ function getDms() {
         })
         .then(({ status, data }) => {
                 if (status === 200) {
-                        data.forEach(function(message) {
+                        data.dms.forEach(function(message) {
                                 chatMessages.insertAdjacentHTML('beforeend', `
                                         <div id="message">
                                                 <li class="text">${message.dm_content}</li>
