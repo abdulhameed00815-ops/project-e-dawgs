@@ -1,3 +1,4 @@
+from cryptography.fernet import Fernet
 from urllib.parse import unquote
 from datetime import datetime
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Depends, HTTPException
@@ -14,6 +15,10 @@ from decouple import config
 import re
 
 email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+
+
+key = config("cryptography_key")
+f = Fernet(key)
 
 
 jwt_secret = config("jwt_secret")
@@ -146,7 +151,8 @@ def sign_up(dawg: DawgSignup, db: Session = Depends(get_db_dawgs), Authorize: Au
         raise HTTPException(status_code=400, detail="password too long")
     if len(dawg.display_name) > 20:
         raise HTTPException(status_code=400, detail="display name too long man")
-    new_dawg = Dawg(email = dawg.email, display_name = dawg.display_name, password = dawg.password) 
+    hashed_pw = bcrypt.hashpw(dawg.password.encode('utf-8'), bcrypt.gensalt())
+    new_dawg = Dawg(email = dawg.email, display_name = dawg.display_name, password = hashed_pw.decode('utf-8')) 
     db.add(new_dawg)
     db.commit()
     dawg_id = db.query(Dawg.id).filter(Dawg.email == dawg.email).scalar()
@@ -159,13 +165,17 @@ def sign_up(dawg: DawgSignup, db: Session = Depends(get_db_dawgs), Authorize: Au
 def sign_in(dawg: DawgSignin, db: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
     if not db.query(Dawg.email).filter(Dawg.email == dawg.email).first():
         raise HTTPException(status_code=404, detail="User doesn't exist")
-    dawg_id = db.query(Dawg.id).filter(Dawg.email == dawg.email).scalar()
-    display_name = db.query(Dawg.display_name).filter(Dawg.email == dawg.email).scalar()
-    access_token = Authorize.create_access_token(subject=dawg_id, user_claims={"email": dawg.email, "display_name": display_name}) 
-    return {
-            "access_token": access_token, 
-            "display_name": display_name
-    }
+    pass_key = db.query(Dawg.password).filter(Dawg.email == dawg.email).scalar()
+    if bcrypt.checkpw(dawg.password.encode('utf-8'), pass_key.encode('utf-8')):
+        dawg_id = db.query(Dawg.id).filter(Dawg.email == dawg.email).scalar()
+        display_name = db.query(Dawg.display_name).filter(Dawg.email == dawg.email).scalar()
+        access_token = Authorize.create_access_token(subject=dawg_id, user_claims={"email": dawg.email, "display_name": display_name}) 
+        return {
+                "access_token": access_token, 
+                "display_name": display_name
+        }
+    else:
+        raise HTTPException(status_code=401, detail="incorrect password")
 
 
 class ConnectionManager:
@@ -281,10 +291,12 @@ async def dm_route(websocket: WebSocket, db_dawgs: Session = Depends(get_db_dawg
             now = datetime.now()    
             time = now.strftime("%H:%M")
             message = f"[{display_name}] {data} {time}"
+            encoded_message = message.encode("utf-8")
+            encrypted_message = f.encrypt(encoded_message)
             await manager.dm(target=target_display_name, message=message)
             await manager.dm(target=display_name, message=message)
             print(message)
-            new_dm = Dm(dm_id = dm_id_value, dm_content = message)
+            new_dm = Dm(dm_id = dm_id_value, dm_content = encrypted_message)
             db_dms.add(new_dm)
             db_dms.commit()
 
@@ -329,5 +341,8 @@ def get_dm_id(display_name: str, target_display_name: str, db_dawgs: Session = D
 @fastapi.get('/getdms/{dm_id}')
 def get_dms(dm_id: int, db: Session = Depends(get_db_dms), Authorize: AuthJWT = Depends()):
     Authorize.jwt_required()
-    messages = db.query(Dm).filter(Dm.dm_id == dm_id).all()
-    return list(messages)
+    dms = db.query(Dm).filter(Dm.dm_id == dm_id).all()
+    dms = list(dms)
+    for dm in dms:
+        dm.dm_content = f.decrypt(dm.dm_content)
+    return {"dms":dms}
