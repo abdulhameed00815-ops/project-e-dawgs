@@ -1,9 +1,10 @@
+import os
 from cryptography.fernet import Fernet
 from urllib.parse import unquote
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, Column, String, Integer
+from sqlalchemy import create_engine, Column, String, Integer, LargeBinary
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
 from pydantic import BaseModel
@@ -17,7 +18,21 @@ import re
 email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
 
 
-key = config("cryptography_key")
+def write_key():
+    key = Fernet.generate_key()
+    with open("key.key", "wb") as key_file:
+        key_file.write(key)
+
+
+def load_key():
+    return open("key.key", "rb").read()
+
+
+if not os.path.exists("key.key"):
+    write_key()
+
+key = load_key()
+
 f = Fernet(key)
 
 
@@ -70,7 +85,7 @@ class Dm(Base):
     __tablename__ = "dms"
     message_id = Column(Integer, primary_key=True)
     dm_id = Column(Integer)
-    dm_content = Column(String)
+    dm_content = Column(LargeBinary)
 
 
 Base.metadata.create_all(bind=engine_dawgs)
@@ -155,10 +170,6 @@ def sign_up(dawg: DawgSignup, db: Session = Depends(get_db_dawgs), Authorize: Au
     new_dawg = Dawg(email = dawg.email, display_name = dawg.display_name, password = hashed_pw.decode('utf-8')) 
     db.add(new_dawg)
     db.commit()
-    dawg_id = db.query(Dawg.id).filter(Dawg.email == dawg.email).scalar()
-    display_name = db.query(Dawg.display_name).filter(Dawg.email == dawg.email).scalar()
-    access_token = Authorize.create_access_token(subject=dawg_id, user_claims={"email": dawg.email, "display_name": display_name}) 
-    return {"acces_token": access_token}
 
 
 @fastapi.post('/signin')
@@ -169,13 +180,28 @@ def sign_in(dawg: DawgSignin, db: Session = Depends(get_db_dawgs), Authorize: Au
     if bcrypt.checkpw(dawg.password.encode('utf-8'), pass_key.encode('utf-8')):
         dawg_id = db.query(Dawg.id).filter(Dawg.email == dawg.email).scalar()
         display_name = db.query(Dawg.display_name).filter(Dawg.email == dawg.email).scalar()
+        custom_expires_time = timedelta(minutes=30)
+        refresh_expires_time = timedelta(days=7)
         access_token = Authorize.create_access_token(subject=dawg_id, user_claims={"email": dawg.email, "display_name": display_name}) 
+        refresh_token = Authorize.create_refresh_token(subject=dawg_id, expires_time=refresh_expires_time, user_claims={"email": dawg.email, "display_name": display_name})
         return {
                 "access_token": access_token, 
-                "display_name": display_name
+                "display_name": display_name,
+                "refresh_token": refresh_token
         }
     else:
         raise HTTPException(status_code=401, detail="incorrect password")
+
+
+@fastapi.post('/refresh/')
+def refresh(Authorize: AuthJWT = Depends()):
+    Authorize.jwt_refresh_token_required()
+    claims = Authorize.get_raw_jwt()
+    email = claims.get("email")
+    role = claims.get("role")
+    id = claims.get("id")
+    new_access_token = Authorize.create_access_token(user_claims={"email": email, "role": role})
+    return {"access token": new_access_token}
 
 
 class ConnectionManager:
@@ -293,6 +319,8 @@ async def dm_route(websocket: WebSocket, db_dawgs: Session = Depends(get_db_dawg
             message = f"[{display_name}] {data} {time}"
             encoded_message = message.encode("utf-8")
             encrypted_message = f.encrypt(encoded_message)
+            print("TYPE:", type(encrypted_message))
+            print("FIRST 20 BYTES:", encrypted_message[:20])
             await manager.dm(target=target_display_name, message=message)
             await manager.dm(target=display_name, message=message)
             print(message)
@@ -341,8 +369,13 @@ def get_dm_id(display_name: str, target_display_name: str, db_dawgs: Session = D
 @fastapi.get('/getdms/{dm_id}')
 def get_dms(dm_id: int, db: Session = Depends(get_db_dms), Authorize: AuthJWT = Depends()):
     Authorize.jwt_required()
-    dms = db.query(Dm).filter(Dm.dm_id == dm_id).all()
-    dms = list(dms)
-    for dm in dms:
-        dm.dm_content = f.decrypt(dm.dm_content)
-    return {"dms":dms}
+    dms = db.query(Dm.dm_content).filter(Dm.dm_id == dm_id).all()
+    result = []
+    for (encrypted,) in dms:
+        if isinstance(encrypted, str):
+            encrypted = encrypted.encode()
+        decrypted = f.decrypt(encrypted).decode()
+        result.append({
+            "dm_content": decrypted
+        })
+    return {"dms": result}
