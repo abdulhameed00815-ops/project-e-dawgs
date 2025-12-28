@@ -1,4 +1,5 @@
-const token = sessionStorage.getItem("access_token")
+let token = sessionStorage.getItem("access_token")
+let refreshToken = sessionStorage.getItem("refresh_token")
 var chatMessages = document.getElementById("messages");
 window.onload = function getMessages() {
 	fetch("http://127.0.0.1:8000/getmessages", {
@@ -22,12 +23,41 @@ window.onload = function getMessages() {
 					</div>
 				`)
 			}) 
+		} else if (status === 422) {
+			fetch("http://127.0.0.1:8000/refresh/", {
+				method:'GET',
+				headers: {
+					"Authorization": `Bearer ${refreshToken}`,
+					"Accept": 'application/json, text/plain, */*',
+					"Content-type": 'application/json'
+
+				}
+			})
+			.then(res => {
+				return res.json().then(data => ({ status: res.status, data: data }));
+			})
+			.then(({ status, data }) => {
+				if (status === 200) {
+					sessionStorage.setItem("access_token", data.access_token);
+					console.log(`${data.access_token} is the new meta`)
+					window.location.reload();
+				}
+			})
 		}	
 	})
 }
+
+
 const displayName = sessionStorage.getItem('display_name');
 document.querySelector("#ws-id").textContent = displayName
 var ws = new WebSocket(`ws://localhost:8000/ws?token=${token}`);
+
+
+ws.onclose = function (event) {
+	if (event.code !== 1000) {
+		window.location.reload();
+	}
+}
 
 
 ws.onmessage = function(event) {
