@@ -31,6 +31,27 @@ function getDmId() {
 	.then(({ status, data }) => {
 		if (status === 200) {
 			sessionStorage.setItem('dm_id', data.dm_id);
+		} else if (status === 402) {
+			fetch("http://127.0.0.1:8000/refresh/", {
+                                method:'GET',
+                                headers: {
+                                        "Authorization": `Bearer ${refreshToken}`,
+                                        "Accept": 'application/json, text/plain, */*',
+                                        "Content-type": 'application/json'
+
+                                }
+                        })
+                        .then(res => {
+                                return res.json().then(data => ({ status: res.status, data: data }));
+                        })
+                        .then(({ status, data }) => {
+                                if (status === 200) {
+                                        sessionStorage.setItem("access_token", data.access_token);
+                                        console.log(`${data.access_token} is the new meta`)
+                                        window.location.reload();
+                                }
+                        })
+
 		}
 
 	});
@@ -39,7 +60,6 @@ function getDmId() {
 
 getDmId()
 const dm_id = sessionStorage.getItem('dm_id')
-console.log(dm_id)
 
 
 function getDms() {
@@ -70,6 +90,7 @@ function getDms() {
 					<li class="text">${data.detail}</li>
 				</div>
 			`);
+			window.location.reload();
 		}
         })
 }
@@ -79,6 +100,14 @@ getDms()
 
 
 var dm = new WebSocket(`ws://localhost:8000/wsdm?token=${token}&target=${target_display_name}`);
+
+
+dm.onclose = function (event) {
+        if (event.code !== 1000) {
+                window.location.reload();
+        }
+}
+
 
 messageForm.addEventListener("submit", function sendDm(event) {
 	event.preventDefault();
