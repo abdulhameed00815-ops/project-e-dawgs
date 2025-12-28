@@ -182,7 +182,7 @@ def sign_in(dawg: DawgSignin, db: Session = Depends(get_db_dawgs), Authorize: Au
         display_name = db.query(Dawg.display_name).filter(Dawg.email == dawg.email).scalar()
         custom_expires_time = timedelta(minutes=30)
         refresh_expires_time = timedelta(days=7)
-        access_token = Authorize.create_access_token(subject=dawg_id, user_claims={"email": dawg.email, "display_name": display_name}) 
+        access_token = Authorize.create_access_token(subject=dawg_id, expires_time=custom_expires_time, user_claims={"email": dawg.email, "display_name": display_name}) 
         refresh_token = Authorize.create_refresh_token(subject=dawg_id, expires_time=refresh_expires_time, user_claims={"email": dawg.email, "display_name": display_name})
         return {
                 "access_token": access_token, 
@@ -193,15 +193,17 @@ def sign_in(dawg: DawgSignin, db: Session = Depends(get_db_dawgs), Authorize: Au
         raise HTTPException(status_code=401, detail="incorrect password")
 
 
-@fastapi.post('/refresh/')
+@fastapi.get('/refresh/')
 def refresh(Authorize: AuthJWT = Depends()):
     Authorize.jwt_refresh_token_required()
     claims = Authorize.get_raw_jwt()
     email = claims.get("email")
-    role = claims.get("role")
-    id = claims.get("id")
-    new_access_token = Authorize.create_access_token(user_claims={"email": email, "role": role})
-    return {"access token": new_access_token}
+    display_name = claims.get("display_name")
+    dawg_id = claims.get("sub")
+    custom_expires_time = timedelta(minutes=30)
+    refresh_expires_time = timedelta(days=7)
+    access_token = Authorize.create_access_token(subject=dawg_id, expires_time=custom_expires_time, user_claims={"email": email, "display_name": display_name}) 
+    return {"access_token": access_token}
 
 
 class ConnectionManager:
@@ -258,19 +260,16 @@ async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db_
 
 
     await manager.connect(websocket, display_name)
-    try:
-        while True:
-            data = await websocket.receive_text()
-            now = datetime.now()    
-            time = now.strftime("%H:%M")
-            await manager.broadcasts(f'[{display_name}]   {data} {time}')
-            message = f'[{display_name}]   {data} {time}'
-            new_message = Message(message_content = message)
-            db.add(new_message)
-            db.commit()
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
-        await manager.broadcasts(f'{display_name} lef the chat')
+
+    while True:
+        data = await websocket.receive_text()
+        now = datetime.now()    
+        time = now.strftime("%H:%M")
+        await manager.broadcasts(f'[{display_name}]   {data} {time}')
+        message = f'[{display_name}]   {data} {time}'
+        new_message = Message(message_content = message)
+        db.add(new_message)
+        db.commit()
         
         
 @fastapi.websocket("/wsdm")
@@ -301,6 +300,7 @@ async def dm_route(websocket: WebSocket, db_dawgs: Session = Depends(get_db_dawg
 
     target_dawg_id = db_dawgs.query(Dawg.id).filter(Dawg.display_name == target_display_name).scalar()
 
+#function that returns a unique dm_id out of two numbers.
     def dm_id(you: int, target: int) -> int:
         x = min(you, target)
         y = max(you, target)
@@ -311,26 +311,21 @@ async def dm_route(websocket: WebSocket, db_dawgs: Session = Depends(get_db_dawg
 
     await manager.connect(websocket, display_name)
 
-    try:
-        while True:
-            data = await websocket.receive_text()
-            now = datetime.now()    
-            time = now.strftime("%H:%M")
-            message = f"[{display_name}] {data} {time}"
-            encoded_message = message.encode("utf-8")
-            encrypted_message = f.encrypt(encoded_message)
-            print("TYPE:", type(encrypted_message))
-            print("FIRST 20 BYTES:", encrypted_message[:20])
-            await manager.dm(target=target_display_name, message=message)
-            await manager.dm(target=display_name, message=message)
-            print(message)
-            new_dm = Dm(dm_id = dm_id_value, dm_content = encrypted_message)
-            db_dms.add(new_dm)
-            db_dms.commit()
-
-    except WebSocketDisconnect:
-        manager.disconnect(display_name)
-        await manager.dm(target=target_display_name, message=f"{display_name} left the chat")
+    while True:
+        data = await websocket.receive_text()
+        now = datetime.now()    
+        time = now.strftime("%H:%M")
+        message = f"[{display_name}] {data} {time}"
+        encoded_message = message.encode("utf-8")
+        encrypted_message = f.encrypt(encoded_message)
+        print("TYPE:", type(encrypted_message))
+        print("FIRST 20 BYTES:", encrypted_message[:20])
+        await manager.dm(target=target_display_name, message=message)
+        await manager.dm(target=display_name, message=message)
+        print(message)
+        new_dm = Dm(dm_id = dm_id_value, dm_content = encrypted_message)
+        db_dms.add(new_dm)
+        db_dms.commit()
 
 
 @fastapi.get('/getmessages')
@@ -371,6 +366,7 @@ def get_dms(dm_id: int, db: Session = Depends(get_db_dms), Authorize: AuthJWT = 
     Authorize.jwt_required()
     dms = db.query(Dm.dm_content).filter(Dm.dm_id == dm_id).all()
     result = []
+# so we basically check if the encrypted message (from the db) is txt or binary, its surely binary but why not.
     for (encrypted,) in dms:
         if isinstance(encrypted, str):
             encrypted = encrypted.encode()
