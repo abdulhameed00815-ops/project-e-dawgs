@@ -48,7 +48,7 @@ origins = [
 ]
 
 
-fastapi.mount("/", StaticFiles(directory=".", html=True), name="static")
+fastapi.mount("/", StaticFiles(directory="/frontend", html=True), name="frontend")
 
 
 Base = declarative_base()
