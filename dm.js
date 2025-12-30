@@ -18,12 +18,7 @@ loungeButton.addEventListener("click", function returnToLounge() {
 
 function getDmId() {
 	fetch(`http://127.0.0.1:8000/getdmid/${display_name}/${target_display_name}`, {
-		method: "GET",
-	        headers: {
-			"Authorization": `Bearer ${token}`,
-			"Accept": 'application/json, text/plain, */*',
-			"Content-type": 'application/json'
-                }
+		credentials: "include"
 	})
 	.then(res => {
 		return res.json().then(data => ({ status: res.status, data: data }));
@@ -33,13 +28,7 @@ function getDmId() {
 			sessionStorage.setItem('dm_id', data.dm_id);
 		} else if (status === 402) {
 			fetch("http://127.0.0.1:8000/refresh/", {
-                                method:'GET',
-                                headers: {
-                                        "Authorization": `Bearer ${refreshToken}`,
-                                        "Accept": 'application/json, text/plain, */*',
-                                        "Content-type": 'application/json'
-
-                                }
+				credentials: "include"
                         })
                         .then(res => {
                                 return res.json().then(data => ({ status: res.status, data: data }));
