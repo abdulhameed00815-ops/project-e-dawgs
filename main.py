@@ -43,12 +43,7 @@ jwt_algo = config("jwt_algorithm")
 fastapi = FastAPI()
 
 
-origins = [
-        "http://localhost:5500"
-]
-
-
-fastapi.mount("/", StaticFiles(directory="/frontend", html=True), name="frontend")
+fastapi.mount("/", StaticFiles(directory="frontend/", html=True), name="frontend")
 
 
 Base = declarative_base()
