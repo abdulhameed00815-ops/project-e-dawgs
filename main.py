@@ -1,8 +1,9 @@
+from fastapi.staticfiles import StaticFiles
 import os
 from cryptography.fernet import Fernet
 from urllib.parse import unquote
 from datetime import datetime, timedelta
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Depends, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Depends, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, Column, String, Integer, LargeBinary
 from sqlalchemy.ext.declarative import declarative_base
@@ -47,7 +48,8 @@ origins = [
 ]
 
 
-fastapi.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"],)
+fastapi.mount("/", StaticFiles(directory=".", html=True), name="static")
+
 
 Base = declarative_base()
 
@@ -173,7 +175,7 @@ def sign_up(dawg: DawgSignup, db: Session = Depends(get_db_dawgs), Authorize: Au
 
 
 @fastapi.post('/signin')
-def sign_in(dawg: DawgSignin, db: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
+def sign_in(response: Response, dawg: DawgSignin, db: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
     if not db.query(Dawg.email).filter(Dawg.email == dawg.email).first():
         raise HTTPException(status_code=404, detail="User doesn't exist")
     pass_key = db.query(Dawg.password).filter(Dawg.email == dawg.email).scalar()
@@ -184,24 +186,34 @@ def sign_in(dawg: DawgSignin, db: Session = Depends(get_db_dawgs), Authorize: Au
         refresh_expires_time = timedelta(days=7)
         access_token = Authorize.create_access_token(subject=dawg_id, expires_time=custom_expires_time, user_claims={"email": dawg.email, "display_name": display_name}) 
         refresh_token = Authorize.create_refresh_token(subject=dawg_id, expires_time=refresh_expires_time, user_claims={"email": dawg.email, "display_name": display_name})
+        response.set_cookie(
+                key="refresh_token",
+                value=refresh_token,
+                httponly=True,
+                secure=True,
+                samesite="none",
+                max_age=604800,
+                expires=604800
+        )
         return {
                 "access_token": access_token, 
-                "display_name": display_name,
-                "refresh_token": refresh_token
+                "display_name": display_name
         }
     else:
         raise HTTPException(status_code=401, detail="incorrect password")
 
 
 @fastapi.get('/refresh/')
-def refresh(Authorize: AuthJWT = Depends()):
+def refresh(request: Request):
+    refresh_token = request.cookies.get("refresh_token")
+    Authorize = AuthJWT()
+    Authorize._token = refresh_token
     Authorize.jwt_refresh_token_required()
     claims = Authorize.get_raw_jwt()
     email = claims.get("email")
     display_name = claims.get("display_name")
     dawg_id = claims.get("sub")
     custom_expires_time = timedelta(minutes=30)
-    refresh_expires_time = timedelta(days=7)
     access_token = Authorize.create_access_token(subject=dawg_id, expires_time=custom_expires_time, user_claims={"email": email, "display_name": display_name}) 
     return {"access_token": access_token}
 
