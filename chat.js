@@ -8,7 +8,6 @@ window.onload = function getMessages() {
 			"Authorization": `Bearer ${token}`,
 			"Accept": 'application/json, text/plain, */*',
                         "Content-type": 'application/json'
-
 		}
 	})
   	.then(res => {
@@ -23,15 +22,9 @@ window.onload = function getMessages() {
 					</div>
 				`)
 			}) 
-		} else if (status === 422) {
+		} else if (status !== 200) {
 			fetch("http://127.0.0.1:8000/refresh/", {
-				method:'GET',
-				headers: {
-					"Authorization": `Bearer ${refreshToken}`,
-					"Accept": 'application/json, text/plain, */*',
-					"Content-type": 'application/json'
-
-				}
+				credentials: "include"
 			})
 			.then(res => {
 				return res.json().then(data => ({ status: res.status, data: data }));
