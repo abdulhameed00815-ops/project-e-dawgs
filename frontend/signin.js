@@ -3,7 +3,7 @@ signupForm.addEventListener('submit', function signin(e) {
         e.preventDefault()
         var email = document.getElementById('email').value;
         var password = document.getElementById('password').value;
-        fetch('http://127.0.0.1:8000/signin', {
+        fetch('http://localhost:8000/signin', {
                 method:'POST',
                 headers: {
                         'accept': 'application/json, text/plain, */*',
@@ -19,7 +19,7 @@ signupForm.addEventListener('submit', function signin(e) {
                         sessionStorage.setItem('access_token', data.access_token);
 			sessionStorage.setItem('display_name', data.display_name);
 			sessionStorage.setItem('refresh_token', data.refresh_token)
-                        window.location.assign("http://localhost:5500/chat.html");
+                        window.location.assign("http://localhost:8000/static/chat.html");
                 } else {
 			var output = document.getElementById('output');
                         output.innerHTML = `
