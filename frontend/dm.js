@@ -13,12 +13,17 @@ const target_display_name = sessionStorage.getItem("target");
 mainHeader.textContent = `You are in a DM with: ${target_display_name}`;
 
 loungeButton.addEventListener("click", function returnToLounge() { 
-	window.location.assign("http://localhost:5500/chat.html")
+	window.location.assign("http://localhost:8000/static/chat.html")
 });
 
 function getDmId() {
-	fetch(`http://127.0.0.1:8000/getdmid/${display_name}/${target_display_name}`, {
-		credentials: "include"
+	fetch(`http://localhost:8000/getdmid/${display_name}/${target_display_name}`, {
+		method:'GET',
+		headers: {
+			"Authorization": `Bearer ${token}`,
+			"Accept": 'application/json, text/plain, */*',
+			"Content-type": 'application/json'
+		}
 	})
 	.then(res => {
 		return res.json().then(data => ({ status: res.status, data: data }));
@@ -26,8 +31,8 @@ function getDmId() {
 	.then(({ status, data }) => {
 		if (status === 200) {
 			sessionStorage.setItem('dm_id', data.dm_id);
-		} else if (status === 402) {
-			fetch("http://127.0.0.1:8000/refresh/", {
+		} else if (status !== 200) {
+			fetch("http://localhost:8000/refresh/", {
 				credentials: "include"
                         })
                         .then(res => {
@@ -52,7 +57,7 @@ const dm_id = sessionStorage.getItem('dm_id')
 
 
 function getDms() {
-        fetch(`http://127.0.0.1:8000/getdms/${dm_id}`, {
+        fetch(`http://localhost:8000/getdms/${dm_id}`, {
                 method:'GET',
                 headers: {
                         "Authorization": `Bearer ${token}`,
@@ -74,12 +79,20 @@ function getDms() {
                                 `)
                         })
                 } else {
-			chatMessages.insertAdjacentHTML('beforeend', `
-				<div id="message">
-					<li class="text">${data.detail}</li>
-				</div>
-			`);
-			window.location.reload();
+			fetch("http://localhost:8000/refresh/", {
+                                credentials: "include"
+                        })
+                        .then(res => {
+                                return res.json().then(data => ({ status: res.status, data: data }));
+                        })
+                        .then(({ status, data }) => {
+                                if (status === 200) {
+                                        sessionStorage.setItem("access_token", data.access_token);
+                                        console.log(`${data.access_token} is the new meta`)
+                                        window.location.reload();
+                                }
+                        })
+
 		}
         })
 }
