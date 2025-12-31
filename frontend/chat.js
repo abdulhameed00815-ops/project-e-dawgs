@@ -1,8 +1,9 @@
 let token = sessionStorage.getItem("access_token")
 let refreshToken = sessionStorage.getItem("refresh_token")
 var chatMessages = document.getElementById("messages");
+console.log(token);
 window.onload = function getMessages() {
-	fetch("http://127.0.0.1:8000/getmessages", {
+	fetch("http://localhost:8000/getmessages", {
 		method:'GET',
 		headers: {
 			"Authorization": `Bearer ${token}`,
@@ -23,7 +24,7 @@ window.onload = function getMessages() {
 				`)
 			}) 
 		} else if (status !== 200) {
-			fetch("http://127.0.0.1:8000/refresh/", {
+			fetch("http://localhost:8000/refresh/", {
 				credentials: "include"
 			})
 			.then(res => {
@@ -74,5 +75,5 @@ targetForm.addEventListener("submit", function dm(e) {
 	e.preventDefault()
 	const target = document.getElementById("target").value;
 	sessionStorage.setItem("target", target)
-	window.location.assign("http://localhost:5500/dm.html");
+	window.location.assign("http://localhost:8000/static/dm.html");
 })
