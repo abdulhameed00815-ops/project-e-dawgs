@@ -4,7 +4,6 @@ from cryptography.fernet import Fernet
 from urllib.parse import unquote
 from datetime import datetime, timedelta
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Depends, HTTPException, Response
-from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, Column, String, Integer, LargeBinary
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
@@ -15,6 +14,11 @@ from fastapi_jwt_auth2 import AuthJWT
 from fastapi_jwt_auth2.exceptions import AuthJWTException
 from decouple import config
 import re
+
+fastapi = FastAPI()
+
+fastapi.mount("/static", StaticFiles(directory="frontend/", html=True), name="frontend")
+
 
 email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
 
@@ -39,11 +43,6 @@ f = Fernet(key)
 
 jwt_secret = config("jwt_secret")
 jwt_algo = config("jwt_algorithm")
-
-fastapi = FastAPI()
-
-
-fastapi.mount("/", StaticFiles(directory="frontend/", html=True), name="frontend")
 
 
 Base = declarative_base()
@@ -128,6 +127,15 @@ class DawgSignin(BaseModel):
 class Settings(BaseModel):
     authjwt_secret_key: str = jwt_secret
 
+    authjwt_token_location: set = {"headers", "cookies"}
+
+    authjwt_cookie_refresh_token_key: str = "refresh_token"
+    authjwt_cookie_csrf_protect: bool = False
+
+    authjwt_cookie_access_token_key: str | None = None
+    authjwt_cookie_access_token_expires: int | None = None
+#explicitly telling jwt auth2 to look for refresh tokens in a cookie with a key "refresh_token".
+
 
 @AuthJWT.load_config
 def get_config():
@@ -185,8 +193,9 @@ def sign_in(response: Response, dawg: DawgSignin, db: Session = Depends(get_db_d
                 key="refresh_token",
                 value=refresh_token,
                 httponly=True,
-                secure=True,
-                samesite="none",
+                secure=False,
+                samesite="lax",
+                path="/",
                 max_age=604800,
                 expires=604800
         )
@@ -199,10 +208,7 @@ def sign_in(response: Response, dawg: DawgSignin, db: Session = Depends(get_db_d
 
 
 @fastapi.get('/refresh/')
-def refresh(request: Request):
-    refresh_token = request.cookies.get("refresh_token")
-    Authorize = AuthJWT()
-    Authorize._token = refresh_token
+def refresh(Authorize: AuthJWT = Depends()):
     Authorize.jwt_refresh_token_required()
     claims = Authorize.get_raw_jwt()
     email = claims.get("email")
@@ -268,15 +274,18 @@ async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db_
 
     await manager.connect(websocket, display_name)
 
-    while True:
-        data = await websocket.receive_text()
-        now = datetime.now()    
-        time = now.strftime("%H:%M")
-        await manager.broadcasts(f'[{display_name}]   {data} {time}')
-        message = f'[{display_name}]   {data} {time}'
-        new_message = Message(message_content = message)
-        db.add(new_message)
-        db.commit()
+    try:
+        while True:
+            data = await websocket.receive_text()
+            now = datetime.now()    
+            time = now.strftime("%H:%M")
+            await manager.broadcasts(f'[{display_name}]   {data} {time}')
+            message = f'[{display_name}]   {data} {time}'
+            new_message = Message(message_content = message)
+            db.add(new_message)
+            db.commit()
+    except WebSocketDisconnect:
+        return
         
         
 @fastapi.websocket("/wsdm")
@@ -318,21 +327,24 @@ async def dm_route(websocket: WebSocket, db_dawgs: Session = Depends(get_db_dawg
 
     await manager.connect(websocket, display_name)
 
-    while True:
-        data = await websocket.receive_text()
-        now = datetime.now()    
-        time = now.strftime("%H:%M")
-        message = f"[{display_name}] {data} {time}"
-        encoded_message = message.encode("utf-8")
-        encrypted_message = f.encrypt(encoded_message)
-        print("TYPE:", type(encrypted_message))
-        print("FIRST 20 BYTES:", encrypted_message[:20])
-        await manager.dm(target=target_display_name, message=message)
-        await manager.dm(target=display_name, message=message)
-        print(message)
-        new_dm = Dm(dm_id = dm_id_value, dm_content = encrypted_message)
-        db_dms.add(new_dm)
-        db_dms.commit()
+    try:
+        while True:
+            data = await websocket.receive_text()
+            now = datetime.now()    
+            time = now.strftime("%H:%M")
+            message = f"[{display_name}] {data} {time}"
+            encoded_message = message.encode("utf-8")
+            encrypted_message = f.encrypt(encoded_message)
+            print("TYPE:", type(encrypted_message))
+            print("FIRST 20 BYTES:", encrypted_message[:20])
+            await manager.dm(target=target_display_name, message=message)
+            await manager.dm(target=display_name, message=message)
+            print(message)
+            new_dm = Dm(dm_id = dm_id_value, dm_content = encrypted_message)
+            db_dms.add(new_dm)
+            db_dms.commit()
+    except WebSocketDisconnect:
+        return
 
 
 @fastapi.get('/getmessages')
