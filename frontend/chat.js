@@ -1,7 +1,7 @@
 let token = sessionStorage.getItem("access_token")
 let refreshToken = sessionStorage.getItem("refresh_token")
 var chatMessages = document.getElementById("messages");
-console.log(token);
+let displayName = sessionStorage.getItem('display_name');
 window.onload = function getMessages() {
 	fetch("http://localhost:8000/getmessages", {
 		method:'GET',
@@ -33,8 +33,10 @@ window.onload = function getMessages() {
 			.then(({ status, data }) => {
 				if (status === 200) {
 					sessionStorage.setItem("access_token", data.access_token);
-					console.log(`${data.access_token} is the new meta`)
+					sessionStorage.setItem("display_name", data.display_name);
 					window.location.reload();
+				} else {
+					window.location.assign("http://localhost:8000/static/signin.html");
 				}
 			})
 		}	
@@ -42,7 +44,6 @@ window.onload = function getMessages() {
 }
 
 
-const displayName = sessionStorage.getItem('display_name');
 document.querySelector("#ws-id").textContent = displayName
 var ws = new WebSocket(`ws://localhost:8000/ws?token=${token}`);
 
