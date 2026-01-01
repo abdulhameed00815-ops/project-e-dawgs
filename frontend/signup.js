@@ -4,7 +4,7 @@ signupForm.addEventListener('submit', function signup(e) {
 	var displayName = document.getElementById('display-name').value; 
 	var email = document.getElementById('email').value;
 	var password = document.getElementById('password').value;
-	fetch('http://127.0.0.1:8000/signup', {
+	fetch('http://localhost:8000/signup', {
 		method:'POST',
 		headers: {
 			'accept': 'application/json, text/plain, */*',
@@ -18,7 +18,7 @@ signupForm.addEventListener('submit', function signup(e) {
 	.then(({ status, data }) => {
 		if (status === 200) {
 			localStorage.setItem('access_token', data.access_token);
-			window.location.assign("http://localhost:5500/signin.html");
+			window.location.assign("http://localhost:5500/static/signin.html");
 		} else {
 			var output = document.getElementById('output');
 			output.innerHTML = `
