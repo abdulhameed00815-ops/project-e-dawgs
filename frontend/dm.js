@@ -41,7 +41,6 @@ function getDmId() {
                         .then(({ status, data }) => {
                                 if (status === 200) {
                                         sessionStorage.setItem("access_token", data.access_token);
-                                        console.log(`${data.access_token} is the new meta`)
                                         window.location.reload();
                                 }
                         })
@@ -88,7 +87,7 @@ function getDms() {
                         .then(({ status, data }) => {
                                 if (status === 200) {
                                         sessionStorage.setItem("access_token", data.access_token);
-                                        console.log(`${data.access_token} is the new meta`)
+					sessionStorage.setItem("display_name", data.display_name);
                                         window.location.reload();
                                 }
                         })
