@@ -127,15 +127,6 @@ class DawgSignin(BaseModel):
 class Settings(BaseModel):
     authjwt_secret_key: str = jwt_secret
 
-    authjwt_token_location: set = {"headers", "cookies"}
-
-    authjwt_cookie_refresh_token_key: str = "refresh_token"
-    authjwt_cookie_csrf_protect: bool = False
-
-    authjwt_cookie_access_token_key: str | None = None
-    authjwt_cookie_access_token_expires: int | None = None
-#explicitly telling jwt auth2 to look for refresh tokens in a cookie with a key "refresh_token".
-
 
 @AuthJWT.load_config
 def get_config():
@@ -208,7 +199,13 @@ def sign_in(response: Response, dawg: DawgSignin, db: Session = Depends(get_db_d
 
 
 @fastapi.get('/refresh/')
-def refresh(Authorize: AuthJWT = Depends()):
+def refresh(request: Request):
+    refresh_token = request.cookies.get("refresh_token")
+    refresh_token = refresh_token.strip()
+    if refresh_token.startswith("b'") and refresh_token.endswith("'"):
+        refresh_token = refresh_token[2:-1]
+    Authorize = AuthJWT()
+    Authorize._token = refresh_token
     Authorize.jwt_refresh_token_required()
     claims = Authorize.get_raw_jwt()
     email = claims.get("email")
@@ -216,7 +213,7 @@ def refresh(Authorize: AuthJWT = Depends()):
     dawg_id = claims.get("sub")
     custom_expires_time = timedelta(minutes=30)
     access_token = Authorize.create_access_token(subject=dawg_id, expires_time=custom_expires_time, user_claims={"email": email, "display_name": display_name}) 
-    return {"access_token": access_token}
+    return {"access_token": access_token, "display_name": display_name}
 
 
 class ConnectionManager:
@@ -335,11 +332,8 @@ async def dm_route(websocket: WebSocket, db_dawgs: Session = Depends(get_db_dawg
             message = f"[{display_name}] {data} {time}"
             encoded_message = message.encode("utf-8")
             encrypted_message = f.encrypt(encoded_message)
-            print("TYPE:", type(encrypted_message))
-            print("FIRST 20 BYTES:", encrypted_message[:20])
             await manager.dm(target=target_display_name, message=message)
             await manager.dm(target=display_name, message=message)
-            print(message)
             new_dm = Dm(dm_id = dm_id_value, dm_content = encrypted_message)
             db_dms.add(new_dm)
             db_dms.commit()
@@ -357,8 +351,6 @@ def get_messages(db: Session = Depends(get_db_messages), Authorize: AuthJWT = De
 @fastapi.get('/getdmid/{display_name}/{target_display_name}')
 def get_dm_id(display_name: str, target_display_name: str, db_dawgs: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
     Authorize.jwt_required()
-    print(display_name)
-    print(target_display_name)
 
 
     def dm_id(you: int, target: int) -> int:
@@ -370,8 +362,6 @@ def get_dm_id(display_name: str, target_display_name: str, db_dawgs: Session = D
     your_id = db_dawgs.query(Dawg.id).filter(Dawg.display_name == display_name).scalar()
 
     target_id = db_dawgs.query(Dawg.id).filter(Dawg.display_name == target_display_name).scalar()
-    print(your_id)
-    print(target_id)
 
     if your_id is None or target_id is None:
         raise HTTPException(status_code=404, detail="user not found")
