@@ -1,5 +1,5 @@
-from fastapi.staticfiles import StaticFiles
 import os
+from fastapi.middleware.cors import CORSMiddleware
 from cryptography.fernet import Fernet
 from urllib.parse import unquote
 from datetime import datetime, timedelta
@@ -17,10 +17,14 @@ import re
 
 fastapi = FastAPI()
 
-fastapi.mount("/static", StaticFiles(directory="frontend/", html=True), name="frontend")
-
-
 email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+
+
+origins = [
+        "http://localhost"
+]
+
+fastapi.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"],)
 
 
 def write_key():
@@ -201,6 +205,8 @@ def sign_in(response: Response, dawg: DawgSignin, db: Session = Depends(get_db_d
 @fastapi.get('/refresh/')
 def refresh(request: Request):
     refresh_token = request.cookies.get("refresh_token")
+    if refresh_token == None:
+        raise HTTPException(status_code=404, detail="token not found")
     refresh_token = refresh_token.strip()
     if refresh_token.startswith("b'") and refresh_token.endswith("'"):
         refresh_token = refresh_token[2:-1]
