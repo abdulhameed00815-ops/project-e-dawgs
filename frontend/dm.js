@@ -13,11 +13,11 @@ const target_display_name = sessionStorage.getItem("target");
 mainHeader.textContent = `You are in a DM with: ${target_display_name}`;
 
 loungeButton.addEventListener("click", function returnToLounge() { 
-	window.location.assign("http://localhost:8000/static/chat.html")
+	window.location.assign("http://localhost/chat.html")
 });
 
 function getDmId() {
-	fetch(`http://localhost:8000/getdmid/${display_name}/${target_display_name}`, {
+	fetch(`http://127.0.0.1:8000/getdmid/${display_name}/${target_display_name}`, {
 		method:'GET',
 		headers: {
 			"Authorization": `Bearer ${token}`,
@@ -32,7 +32,7 @@ function getDmId() {
 		if (status === 200) {
 			sessionStorage.setItem('dm_id', data.dm_id);
 		} else if (status !== 200) {
-			fetch("http://localhost:8000/refresh/", {
+			fetch("http://127.0.0.1:8000/refresh/", {
 				credentials: "include"
                         })
                         .then(res => {

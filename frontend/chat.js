@@ -3,7 +3,7 @@ let refreshToken = sessionStorage.getItem("refresh_token")
 var chatMessages = document.getElementById("messages");
 let displayName = sessionStorage.getItem('display_name');
 window.onload = function getMessages() {
-	fetch("http://localhost:8000/getmessages", {
+	fetch("http://127.0.0.1:8000/getmessages", {
 		method:'GET',
 		headers: {
 			"Authorization": `Bearer ${token}`,
@@ -24,7 +24,7 @@ window.onload = function getMessages() {
 				`)
 			}) 
 		} else if (status !== 200) {
-			fetch("http://localhost:8000/refresh/", {
+			fetch("http://127.0.0.1:8000/refresh/", {
 				credentials: "include"
 			})
 			.then(res => {
@@ -36,7 +36,7 @@ window.onload = function getMessages() {
 					sessionStorage.setItem("display_name", data.display_name);
 					window.location.reload();
 				} else {
-					window.location.assign("http://localhost:8000/static/signin.html");
+					window.location.assign("http://localhost/signin.html");
 				}
 			})
 		}	
