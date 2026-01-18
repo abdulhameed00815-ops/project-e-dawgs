@@ -10,8 +10,10 @@
 3-dms get fully encrypted and saved in a database to enable loading them when one socket connects to the dm.
 <br/>
 4-this project supports persistent login as it stores refresh tokens as cookies in your browser.
-<br>
+<br/>
 5-the main page is the chat page, it will automatically direct you to the signin page if you dont have a refresh token cookie in your browser.
+<br/>
+6-http requests get queued to reduce load on the system.
 
 
 ## Technology used:
