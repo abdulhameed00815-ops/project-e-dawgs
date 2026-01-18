@@ -1,3 +1,4 @@
+from functools import wraps
 from fastapi.staticfiles import StaticFiles
 import os
 from cryptography.fernet import Fernet
@@ -14,8 +15,57 @@ from fastapi_jwt_auth2 import AuthJWT
 from fastapi_jwt_auth2.exceptions import AuthJWTException
 from decouple import config
 import re
+import asyncio
+from asyncio import Future, iscoroutine
+from typing import Callable, Any
+
+request_queue = asyncio.Queue()
 
 fastapi = FastAPI()
+
+
+#this async func awaits to get a job from the queue, it then executes it, all in a sequential manner.
+async def queue_worker():
+    while True:
+        job = await request_queue.get()
+        try:
+            await job()
+        except Exception as e:
+            print("Error in queued job:", e)
+        finally:
+            request_queue.task_done()
+
+
+#this decorator awakes the worker function on server startup, this doesn't disrupt the normal endpoints from doing their work (they work like threads).
+@fastapi.on_event("startup")
+async def startup_event():
+    asyncio.create_task(queue_worker())
+
+
+#this function enqueues jobs (func).
+async def enqueue(func: Callable[[], Any]):
+    await request_queue.put(func)
+
+
+#this is a decorator/wrapper, it wraps the endpoint logic into a job function, this function will be enqueued to our queue instead of being executed at once.
+def queued_endpoint(func):
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        future = Future()
+
+        async def job():
+            try:
+                result = func(*args, **kwargs)
+                if iscoroutine(result):
+                    result = await result
+                future.set_result(result)
+            except Exception as e:
+                future.set_exception(e)
+        await enqueue(job)
+        return await future
+
+    return wrapper
+
 
 fastapi.mount("/static", StaticFiles(directory="frontend/", html=True), name="frontend")
 
@@ -149,6 +199,7 @@ def display_name(Authorize: AuthJWT = Depends()):
 
 
 @fastapi.post('/signup')
+@queued_endpoint
 def sign_up(dawg: DawgSignup, db: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
     if db.query(Dawg.email).filter(Dawg.email == dawg.email).first():
         raise HTTPException(status_code=409, detail="user email already in use")
@@ -169,6 +220,7 @@ def sign_up(dawg: DawgSignup, db: Session = Depends(get_db_dawgs), Authorize: Au
 
 
 @fastapi.post('/signin')
+@queued_endpoint
 def sign_in(response: Response, dawg: DawgSignin, db: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
     if not db.query(Dawg.email).filter(Dawg.email == dawg.email).first():
         raise HTTPException(status_code=404, detail="User doesn't exist")
@@ -199,8 +251,11 @@ def sign_in(response: Response, dawg: DawgSignin, db: Session = Depends(get_db_d
 
 
 @fastapi.get('/refresh/')
+@queued_endpoint
 def refresh(request: Request):
     refresh_token = request.cookies.get("refresh_token")
+    if refresh_token == None:
+        raise HTTPException(status_code=404, detail="missing refresh token")
     refresh_token = refresh_token.strip()
     if refresh_token.startswith("b'") and refresh_token.endswith("'"):
         refresh_token = refresh_token[2:-1]
@@ -250,6 +305,7 @@ manager = ConnectionManager()
 
 #you cant add authorization or depends to a websocket like you would on a restful api, so you gotta pass the token as a parameter in the websocket request link, get this parameter in the route, manually set it as a jwt token, grab the claims of this token and use them as you like, jwt ofc checks if the password is their when it checks the token so dont worry.
 @fastapi.websocket('/ws')
+@queued_endpoint
 async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db_messages)):
     token = websocket.query_params.get("token")
     if not token:
@@ -286,6 +342,7 @@ async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db_
         
         
 @fastapi.websocket("/wsdm")
+@queued_endpoint
 async def dm_route(websocket: WebSocket, db_dawgs: Session = Depends(get_db_dawgs), db_dms: Session = Depends(get_db_dms)):
     token = websocket.query_params.get("token")
     if not token:
@@ -342,6 +399,7 @@ async def dm_route(websocket: WebSocket, db_dawgs: Session = Depends(get_db_dawg
 
 
 @fastapi.get('/getmessages')
+@queued_endpoint
 def get_messages(db: Session = Depends(get_db_messages), Authorize: AuthJWT = Depends()):
     Authorize.jwt_required()
     messages = db.query(Message).all()
@@ -349,6 +407,7 @@ def get_messages(db: Session = Depends(get_db_messages), Authorize: AuthJWT = De
 
 
 @fastapi.get('/getdmid/{display_name}/{target_display_name}')
+@queued_endpoint
 def get_dm_id(display_name: str, target_display_name: str, db_dawgs: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
     Authorize.jwt_required()
 
@@ -371,6 +430,7 @@ def get_dm_id(display_name: str, target_display_name: str, db_dawgs: Session = D
 
 
 @fastapi.get('/getdms/{dm_id}')
+@queued_endpoint
 def get_dms(dm_id: int, db: Session = Depends(get_db_dms), Authorize: AuthJWT = Depends()):
     Authorize.jwt_required()
     dms = db.query(Dm.dm_content).filter(Dm.dm_id == dm_id).all()
