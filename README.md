@@ -13,7 +13,7 @@
 <br/>
 5-the main page is the chat page, it will automatically direct you to the signin page if you dont have a refresh token cookie in your browser.
 <br/>
-6-http requests get queued to reduce load on the system.
+6-http requests get queued to reduce load on the system, had to change the whole endpoint logic in order to queue only the concrete logic of each endpoint, not the whole endpoint.
 
 
 ## Technology used:
