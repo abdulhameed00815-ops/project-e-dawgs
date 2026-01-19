@@ -219,9 +219,7 @@ def sign_up(dawg: DawgSignup, db: Session = Depends(get_db_dawgs), Authorize: Au
     db.commit()
 
 
-@fastapi.post('/signin')
-@queued_endpoint
-def sign_in(response: Response, dawg: DawgSignin, db: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
+def sign_in_logic(db, dawg, response, Authorize):
     if not db.query(Dawg.email).filter(Dawg.email == dawg.email).first():
         raise HTTPException(status_code=404, detail="User doesn't exist")
     pass_key = db.query(Dawg.password).filter(Dawg.email == dawg.email).scalar()
@@ -248,6 +246,13 @@ def sign_in(response: Response, dawg: DawgSignin, db: Session = Depends(get_db_d
         }
     else:
         raise HTTPException(status_code=401, detail="incorrect password")
+
+
+
+@fastapi.post('/signin')
+@queued_endpoint
+def sign_in(response: Response, dawg: DawgSignin, db: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
+    sign_in_logic(response, dawg, db, Authorize)
 
 
 @fastapi.get('/refresh/')
@@ -398,20 +403,18 @@ async def dm_route(websocket: WebSocket, db_dawgs: Session = Depends(get_db_dawg
         return
 
 
+def get_messages_logic(db):
+    return db.query(Message).all()
+
+
 @fastapi.get('/getmessages')
-@queued_endpoint
 def get_messages(db: Session = Depends(get_db_messages), Authorize: AuthJWT = Depends()):
     Authorize.jwt_required()
-    messages = db.query(Message).all()
+    messages = fetch_messages(db)
     return list(messages)
 
 
-@fastapi.get('/getdmid/{display_name}/{target_display_name}')
-@queued_endpoint
-def get_dm_id(display_name: str, target_display_name: str, db_dawgs: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
-    Authorize.jwt_required()
-
-
+def get_dm_id_logic(db_dawgs):
     def dm_id(you: int, target: int) -> int:
         x = min(you, target)
         y = max(you, target)
@@ -426,16 +429,26 @@ def get_dm_id(display_name: str, target_display_name: str, db_dawgs: Session = D
         raise HTTPException(status_code=404, detail="user not found")
 
 
-    return {"dm_id": dm_id(you=your_id, target=target_id)}
+    dm_id_value = dm_id(your_id, target=target_id)
+
+    return dm_id_value
 
 
-@fastapi.get('/getdms/{dm_id}')
-@queued_endpoint
-def get_dms(dm_id: int, db: Session = Depends(get_db_dms), Authorize: AuthJWT = Depends()):
+@fastapi.get('/getdmid/{display_name}/{target_display_name}')
+def get_dm_id(display_name: str, target_display_name: str, db_dawgs: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
     Authorize.jwt_required()
+
+
+    dm_id_value = get_dm_id_logic(db_dawgs)
+
+
+    return {"dm_id": dm_id_value}
+
+
+def get_dms_logic(db):
     dms = db.query(Dm.dm_content).filter(Dm.dm_id == dm_id).all()
     result = []
-# so we basically check if the encrypted message (from the db) is txt or binary, its surely binary but why not.
+#so we basically check if the encrypted message (from the db) is txt or binary, its surely binary but why not.
     for (encrypted,) in dms:
         if isinstance(encrypted, str):
             encrypted = encrypted.encode()
@@ -443,4 +456,10 @@ def get_dms(dm_id: int, db: Session = Depends(get_db_dms), Authorize: AuthJWT = 
         result.append({
             "dm_content": decrypted
         })
+
+
+@fastapi.get('/getdms/{dm_id}')
+def get_dms(dm_id: int, db: Session = Depends(get_db_dms), Authorize: AuthJWT = Depends()):
+    Authorize.jwt_required()
+    get_dms_logic(db)
     return {"dms": result}
