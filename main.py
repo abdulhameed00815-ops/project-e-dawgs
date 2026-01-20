@@ -198,9 +198,8 @@ def display_name(Authorize: AuthJWT = Depends()):
     return display_name
 
 
-@fastapi.post('/signup')
 @queued_endpoint
-def sign_up(dawg: DawgSignup, db: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
+async def sign_up_logic(dawg, db, Authorize):
     if db.query(Dawg.email).filter(Dawg.email == dawg.email).first():
         raise HTTPException(status_code=409, detail="user email already in use")
     if not re.fullmatch(email_regex, dawg.email):
@@ -219,7 +218,13 @@ def sign_up(dawg: DawgSignup, db: Session = Depends(get_db_dawgs), Authorize: Au
     db.commit()
 
 
-def sign_in_logic(db, dawg, response, Authorize):
+@fastapi.post('/signup')
+async def sign_up(dawg: DawgSignup, db: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
+    await sign_up_logic(dawg, db, Authorize)
+
+
+@queued_endpoint
+async def sign_in_logic(db, dawg, response, Authorize):
     if not db.query(Dawg.email).filter(Dawg.email == dawg.email).first():
         raise HTTPException(status_code=404, detail="User doesn't exist")
     pass_key = db.query(Dawg.password).filter(Dawg.email == dawg.email).scalar()
@@ -250,9 +255,8 @@ def sign_in_logic(db, dawg, response, Authorize):
 
 
 @fastapi.post('/signin')
-@queued_endpoint
-def sign_in(response: Response, dawg: DawgSignin, db: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
-    sign_in_logic(response, dawg, db, Authorize)
+async def sign_in(response: Response, dawg: DawgSignin, db: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
+    await sign_in_logic(response, dawg, db, Authorize)
 
 
 @fastapi.get('/refresh/')
@@ -308,10 +312,8 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
-#you cant add authorization or depends to a websocket like you would on a restful api, so you gotta pass the token as a parameter in the websocket request link, get this parameter in the route, manually set it as a jwt token, grab the claims of this token and use them as you like, jwt ofc checks if the password is their when it checks the token so dont worry.
-@fastapi.websocket('/ws')
 @queued_endpoint
-async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db_messages)):
+async def websocket_endpoint_logic(websocket, db):
     token = websocket.query_params.get("token")
     if not token:
         await websocket.close(code=1008)
@@ -344,11 +346,16 @@ async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db_
             db.commit()
     except WebSocketDisconnect:
         return
-        
-        
-@fastapi.websocket("/wsdm")
+
+
+#you cant add authorization or depends to a websocket like you would on a restful api, so you gotta pass the token as a parameter in the websocket request link, get this parameter in the route, manually set it as a jwt token, grab the claims of this token and use them as you like, jwt ofc checks if the password is their when it checks the token so dont worry.
+@fastapi.websocket('/ws')
+async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db_messages)):
+    await websocket_endpoint_logic(websocket, db)
+
+
 @queued_endpoint
-async def dm_route(websocket: WebSocket, db_dawgs: Session = Depends(get_db_dawgs), db_dms: Session = Depends(get_db_dms)):
+async def dm_route_logic(websocket, db_dawgs, db_dms):
     token = websocket.query_params.get("token")
     if not token:
         await websocket.close(code=1008)
@@ -401,24 +408,27 @@ async def dm_route(websocket: WebSocket, db_dawgs: Session = Depends(get_db_dawg
             db_dms.commit()
     except WebSocketDisconnect:
         return
+        
+        
+@fastapi.websocket("/wsdm")
+async def dm_route(websocket: WebSocket, db_dawgs: Session = Depends(get_db_dawgs), db_dms: Session = Depends(get_db_dms)):
+    await dm_route_logic(websocket, db_dawgs, db_dms)
 
 
+@queued_endpoint
 def get_messages_logic(db):
     return db.query(Message).all()
 
 
 @fastapi.get('/getmessages')
-def get_messages(db: Session = Depends(get_db_messages), Authorize: AuthJWT = Depends()):
+async def get_messages(db: Session = Depends(get_db_messages), Authorize: AuthJWT = Depends()):
     Authorize.jwt_required()
-    messages = fetch_messages(db)
+    messages = await get_messages_logic(db=db)
     return list(messages)
 
 
-def get_dm_id_logic(db_dawgs):
-    def dm_id(you: int, target: int) -> int:
-        x = min(you, target)
-        y = max(you, target)
-        return (x + y) * (x + y + 1) // 2 + y
+@queued_endpoint
+async def get_dm_id_logic(db_dawgs, display_name, target_display_name, Authorize):
 
 
     your_id = db_dawgs.query(Dawg.id).filter(Dawg.display_name == display_name).scalar()
@@ -426,26 +436,32 @@ def get_dm_id_logic(db_dawgs):
     target_id = db_dawgs.query(Dawg.id).filter(Dawg.display_name == target_display_name).scalar()
 
     if your_id is None or target_id is None:
-        raise HTTPException(status_code=404, detail="user not found")
+        raise ValueError("user not found")
 
 
-    dm_id_value = dm_id(your_id, target=target_id)
+    dm_id_value = dm_id(your_id, target_id)
 
-    return dm_id_value
+    x = min(your_id, target_id)
+    y = max(your_id, target_id)
+
+    return (x + y) * (x + y + 1) // 2 + y
 
 
 @fastapi.get('/getdmid/{display_name}/{target_display_name}')
-def get_dm_id(display_name: str, target_display_name: str, db_dawgs: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
+async def get_dm_id(display_name: str, target_display_name: str, db_dawgs: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
     Authorize.jwt_required()
 
-
-    dm_id_value = get_dm_id_logic(db_dawgs)
-
-
-    return {"dm_id": dm_id_value}
+    try:
+        dm_id_value = await get_dm_id_logic(db_dawgs=db_dawgs, display_name=display_name, target_display_name=target_display_name, Authorize=Authorize)
 
 
-def get_dms_logic(db):
+        return {"dm_id": dm_id_value}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="user not found")
+
+
+@queued_endpoint
+async def get_dms_logic(dm_id, db, Authorize):
     dms = db.query(Dm.dm_content).filter(Dm.dm_id == dm_id).all()
     result = []
 #so we basically check if the encrypted message (from the db) is txt or binary, its surely binary but why not.
@@ -457,9 +473,11 @@ def get_dms_logic(db):
             "dm_content": decrypted
         })
 
+    return result
+
 
 @fastapi.get('/getdms/{dm_id}')
-def get_dms(dm_id: int, db: Session = Depends(get_db_dms), Authorize: AuthJWT = Depends()):
+async def get_dms(dm_id: int, db: Session = Depends(get_db_dms), Authorize: AuthJWT = Depends()):
     Authorize.jwt_required()
-    get_dms_logic(db)
+    result = await get_dms_logic(dm_id=dm_id, db=db, Authorize=Authorize)
     return {"dms": result}
