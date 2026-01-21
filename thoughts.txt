@@ -1,1 +1,1 @@
-having a hard time with async and queueing.
+so, i will have to make a producer and a consumer functions for asyncio.queue, then make a decorator/wrapper to wrap all the functions of the app with the producer function, that shouldn't be that hard.
