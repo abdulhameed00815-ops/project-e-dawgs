@@ -19,52 +19,8 @@ import asyncio
 from asyncio import Future, iscoroutine
 from typing import Callable, Any
 
-request_queue = asyncio.Queue()
 
 fastapi = FastAPI()
-
-
-#this async func awaits to get a job from the queue, it then executes it, all in a sequential manner.
-async def queue_worker():
-    while True:
-        job = await request_queue.get()
-        try:
-            await job()
-        except Exception as e:
-            print("Error in queued job:", e)
-        finally:
-            request_queue.task_done()
-
-
-#this decorator awakes the worker function on server startup, this doesn't disrupt the normal endpoints from doing their work (they work like threads).
-@fastapi.on_event("startup")
-async def startup_event():
-    asyncio.create_task(queue_worker())
-
-
-#this function enqueues jobs (func).
-async def enqueue(func: Callable[[], Any]):
-    await request_queue.put(func)
-
-
-#this is a decorator/wrapper, it wraps the endpoint logic into a job function, this function will be enqueued to our queue instead of being executed at once.
-def queued_endpoint(func):
-    @wraps(func)
-    async def wrapper(*args, **kwargs):
-        future = Future()
-
-        async def job():
-            try:
-                result = func(*args, **kwargs)
-                if iscoroutine(result):
-                    result = await result
-                future.set_result(result)
-            except Exception as e:
-                future.set_exception(e)
-        await enqueue(job)
-        return await future
-
-    return wrapper
 
 
 fastapi.mount("/static", StaticFiles(directory="frontend/", html=True), name="frontend")
@@ -198,8 +154,7 @@ def display_name(Authorize: AuthJWT = Depends()):
     return display_name
 
 
-@queued_endpoint
-async def sign_up_logic(dawg, db, Authorize):
+def sign_up_logic(dawg, db, Authorize):
     if db.query(Dawg.email).filter(Dawg.email == dawg.email).first():
         raise HTTPException(status_code=409, detail="user email already in use")
     if not re.fullmatch(email_regex, dawg.email):
@@ -219,12 +174,11 @@ async def sign_up_logic(dawg, db, Authorize):
 
 
 @fastapi.post('/signup')
-async def sign_up(dawg: DawgSignup, db: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
-    await sign_up_logic(dawg, db, Authorize)
+def sign_up(dawg: DawgSignup, db: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
+    sign_up_logic(dawg, db, Authorize)
 
 
-@queued_endpoint
-async def sign_in_logic(db, dawg, response, Authorize):
+def sign_in_logic(db, dawg, response, Authorize):
     if not db.query(Dawg.email).filter(Dawg.email == dawg.email).first():
         raise HTTPException(status_code=404, detail="User doesn't exist")
     pass_key = db.query(Dawg.password).filter(Dawg.email == dawg.email).scalar()
@@ -256,11 +210,10 @@ async def sign_in_logic(db, dawg, response, Authorize):
 
 @fastapi.post('/signin')
 async def sign_in(response: Response, dawg: DawgSignin, db: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
-    await sign_in_logic(response, dawg, db, Authorize)
+    sign_in_logic(response, dawg, db, Authorize)
 
 
 @fastapi.get('/refresh/')
-@queued_endpoint
 def refresh(request: Request):
     refresh_token = request.cookies.get("refresh_token")
     if refresh_token == None:
@@ -312,7 +265,6 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
-@queued_endpoint
 async def websocket_endpoint_logic(websocket, db):
     token = websocket.query_params.get("token")
     if not token:
@@ -354,7 +306,6 @@ async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db_
     await websocket_endpoint_logic(websocket, db)
 
 
-@queued_endpoint
 async def dm_route_logic(websocket, db_dawgs, db_dms):
     token = websocket.query_params.get("token")
     if not token:
@@ -415,20 +366,18 @@ async def dm_route(websocket: WebSocket, db_dawgs: Session = Depends(get_db_dawg
     await dm_route_logic(websocket, db_dawgs, db_dms)
 
 
-@queued_endpoint
 def get_messages_logic(db):
     return db.query(Message).all()
 
 
 @fastapi.get('/getmessages')
-async def get_messages(db: Session = Depends(get_db_messages), Authorize: AuthJWT = Depends()):
+def get_messages(db: Session = Depends(get_db_messages), Authorize: AuthJWT = Depends()):
     Authorize.jwt_required()
-    messages = await get_messages_logic(db=db)
+    messages = get_messages_logic(db=db)
     return list(messages)
 
 
-@queued_endpoint
-async def get_dm_id_logic(db_dawgs, display_name, target_display_name, Authorize):
+def get_dm_id_logic(db_dawgs, display_name, target_display_name, Authorize):
 
 
     your_id = db_dawgs.query(Dawg.id).filter(Dawg.display_name == display_name).scalar()
@@ -448,11 +397,11 @@ async def get_dm_id_logic(db_dawgs, display_name, target_display_name, Authorize
 
 
 @fastapi.get('/getdmid/{display_name}/{target_display_name}')
-async def get_dm_id(display_name: str, target_display_name: str, db_dawgs: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
+def get_dm_id(display_name: str, target_display_name: str, db_dawgs: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
     Authorize.jwt_required()
 
     try:
-        dm_id_value = await get_dm_id_logic(db_dawgs=db_dawgs, display_name=display_name, target_display_name=target_display_name, Authorize=Authorize)
+        dm_id_value = get_dm_id_logic(db_dawgs=db_dawgs, display_name=display_name, target_display_name=target_display_name, Authorize=Authorize)
 
 
         return {"dm_id": dm_id_value}
@@ -460,8 +409,7 @@ async def get_dm_id(display_name: str, target_display_name: str, db_dawgs: Sessi
         raise HTTPException(status_code=404, detail="user not found")
 
 
-@queued_endpoint
-async def get_dms_logic(dm_id, db, Authorize):
+def get_dms_logic(dm_id, db, Authorize):
     dms = db.query(Dm.dm_content).filter(Dm.dm_id == dm_id).all()
     result = []
 #so we basically check if the encrypted message (from the db) is txt or binary, its surely binary but why not.
@@ -477,7 +425,7 @@ async def get_dms_logic(dm_id, db, Authorize):
 
 
 @fastapi.get('/getdms/{dm_id}')
-async def get_dms(dm_id: int, db: Session = Depends(get_db_dms), Authorize: AuthJWT = Depends()):
+def get_dms(dm_id: int, db: Session = Depends(get_db_dms), Authorize: AuthJWT = Depends()):
     Authorize.jwt_required()
-    result = await get_dms_logic(dm_id=dm_id, db=db, Authorize=Authorize)
+    result = get_dms_logic(dm_id=dm_id, db=db, Authorize=Authorize)
     return {"dms": result}
