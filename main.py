@@ -23,6 +23,35 @@ from typing import Callable, Any
 fastapi = FastAPI()
 
 
+queue = asyncio.Queue()
+
+
+async def enqueue_and_await(func, *args, **kwargs):
+    loop = asyncio.get_running_loop()
+    future = loop.create_future()
+    await queue.put((func, args, kwargs, future))
+    return await future
+
+
+async def queue_consumer():
+    while True:
+        func, args, kwargs, future = await queue.get()
+        try:
+            if asyncio.iscoroutinefunction(func):
+                result = await func(*args, **kwargs)
+            else:
+                result = func(*args, **kwargs)
+            future.set_result(result)
+        except Exception as e:
+            future.set_exception(e)
+        queue.task_done()
+
+
+@fastapi.on_event("startup")
+async def start_worker():
+    asyncio.create_task(queue_consumer())
+
+
 fastapi.mount("/static", StaticFiles(directory="frontend/", html=True), name="frontend")
 
 
@@ -174,8 +203,8 @@ def sign_up_logic(dawg, db, Authorize):
 
 
 @fastapi.post('/signup')
-def sign_up(dawg: DawgSignup, db: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
-    sign_up_logic(dawg, db, Authorize)
+async def sign_up(dawg: DawgSignup, db: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
+    await enqueue_and_await(dawg=dawg, db=db, Authorize=Authorize, func=sign_up_logic)
 
 
 def sign_in_logic(db, dawg, response, Authorize):
@@ -210,7 +239,7 @@ def sign_in_logic(db, dawg, response, Authorize):
 
 @fastapi.post('/signin')
 async def sign_in(response: Response, dawg: DawgSignin, db: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
-    sign_in_logic(response, dawg, db, Authorize)
+    await enqueue_and_await(response=response, dawg=dawg, db=db, Authorize=Authorize, func=sign_in_logic)
 
 
 @fastapi.get('/refresh/')
@@ -303,7 +332,7 @@ async def websocket_endpoint_logic(websocket, db):
 #you cant add authorization or depends to a websocket like you would on a restful api, so you gotta pass the token as a parameter in the websocket request link, get this parameter in the route, manually set it as a jwt token, grab the claims of this token and use them as you like, jwt ofc checks if the password is their when it checks the token so dont worry.
 @fastapi.websocket('/ws')
 async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db_messages)):
-    await websocket_endpoint_logic(websocket, db)
+    await enqueue_and_await(websocket=websocket, db=db, func=websocket_endpoint_logic)
 
 
 async def dm_route_logic(websocket, db_dawgs, db_dms):
@@ -363,7 +392,7 @@ async def dm_route_logic(websocket, db_dawgs, db_dms):
         
 @fastapi.websocket("/wsdm")
 async def dm_route(websocket: WebSocket, db_dawgs: Session = Depends(get_db_dawgs), db_dms: Session = Depends(get_db_dms)):
-    await dm_route_logic(websocket, db_dawgs, db_dms)
+    await enqueue_and_await(websocket=websocket, db_dawgs=db_dawgs, db_dms=db_dms, func=dm_route_logic)
 
 
 def get_messages_logic(db):
@@ -397,11 +426,11 @@ def get_dm_id_logic(db_dawgs, display_name, target_display_name, Authorize):
 
 
 @fastapi.get('/getdmid/{display_name}/{target_display_name}')
-def get_dm_id(display_name: str, target_display_name: str, db_dawgs: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
+async def get_dm_id(display_name: str, target_display_name: str, db_dawgs: Session = Depends(get_db_dawgs), Authorize: AuthJWT = Depends()):
     Authorize.jwt_required()
 
     try:
-        dm_id_value = get_dm_id_logic(db_dawgs=db_dawgs, display_name=display_name, target_display_name=target_display_name, Authorize=Authorize)
+        dm_id_value = await enqueue_and_await(db_dawgs=db_dawgs, display_name=display_name, target_display_name=target_display_name, Authorize=Authorize, func=get_dm_id_logic)
 
 
         return {"dm_id": dm_id_value}
@@ -425,7 +454,7 @@ def get_dms_logic(dm_id, db, Authorize):
 
 
 @fastapi.get('/getdms/{dm_id}')
-def get_dms(dm_id: int, db: Session = Depends(get_db_dms), Authorize: AuthJWT = Depends()):
+async def get_dms(dm_id: int, db: Session = Depends(get_db_dms), Authorize: AuthJWT = Depends()):
     Authorize.jwt_required()
-    result = get_dms_logic(dm_id=dm_id, db=db, Authorize=Authorize)
+    result = await enqueue_and_await(dm_id=dm_id, db=db, Authorize=Authorize, func=get_dms_logic)
     return {"dms": result}
